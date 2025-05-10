@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ONDC JSON to CSV Converter</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      background: white;
+    }
+    h2 { text-align: center; color: #2c3e50; margin-bottom: 30px; }
+    #dropZone {
+      border: 2px dashed #007bff;
+      border-radius: 6px;
+      padding: 30px;
+      text-align: center;
+      color: #007bff;
+      font-weight: bold;
+      margin-bottom: 20px;
+      transition: background-color 0.2s;
+      cursor: pointer;
+    }
+    #dropZone.dragover { background-color: #e6f0ff; }
+    input[type="file"] { display: none; }
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      flex: 1;
+      font-size: 16px;
+    }
+    button:hover { background-color: #0056b3; }
+    .stats {
+      background: #f1f1f1;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    .stats p { margin: 6px 0; font-weight: 500; }
+    .footer {
+      margin-top: 30px;
+      font-size: 13px;
+      text-align: center;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <h2>🧾 JSON to CSV Converter</h2>
+  <div id="dropZone">📂 Drag & Drop your ONDC JSON file here or <label for="jsonFile" style="color:#007bff; cursor:pointer; text-decoration:underline;">browse</label></div>
+  <input type="file" id="jsonFile" accept=".json">
+
+  <div class="buttons">
+    <button onclick="calculateItemData()">📊 Show Item Data</button>
+    <button onclick="calculateStoreData()">📊 Show Store Data</button>
+    <button onclick="convertJsonToCsv()">📤 Convert & Download CSV</button>
+    <button onclick="clearFile()" style="background-color: #dc3545;">🗑️ Remove File</button>
+  </div>
+
+  <div id="itemData" class="stats" style="display: none;"></div>
+  <div id="storeData" class="stats" style="display: none;"></div>
+
+  <div class="footer">On_Search Json to CSV Converter</div>
+
+  <script>
+    let uploadedFile;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('jsonFile');
+    const itemDataContainer = document.getElementById('itemData');
+    const storeDataContainer = document.getElementById('storeData');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      uploadedFile = e.dataTransfer.files[0];
+      dropZone.textContent = `✅ File loaded: ${uploadedFile.name}`;
+    });
+    fileInput.addEventListener('change', (e) => {
+      uploadedFile = e.target.files[0];
+      dropZone.textContent = `✅ File selected: ${uploadedFile.name}`;
+    });
+
+    function clearFile() {
+      uploadedFile = null;
+      fileInput.value = "";
+      dropZone.textContent = "📂 Drag & Drop your ONDC JSON file here or browse";
+      itemDataContainer.style.display = 'none';
+      storeDataContainer.style.display = 'none';
+      itemDataContainer.innerHTML = '';
+      storeDataContainer.innerHTML = '';
+    }
+
+    function getFilteredItems(data) {
+      const providers = data.message?.catalog?.["bpp/providers"];
+      if (!providers || !providers.length) return [];
+      const rawItems = providers[0]?.items || [];
+      return rawItems.filter(i => !i.id.startsWith("C:") && !i.id.startsWith("CG:"));
+    }
+
+    function calculateItemData() {
+      if (!uploadedFile) {
+        alert("Please upload a JSON file first.");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const data = JSON.parse(event.target.result);
+          const items = getFilteredItems(data);
+
+          const totalItems = items.length;
+          const itemsWithCustomizations = items.filter(i => i.tags?.some(t => t.code === "custom_group")).length;
+          const itemsWithoutImages = items.filter(i => !i.descriptor?.symbol && (!i.descriptor?.images || i.descriptor.images.length === 0)).length;
+          const itemsWithZeroQty = items.filter(i => i.quantity?.available?.count === "0").length;
+          const itemsWithDisabledLabel = items.filter(i => i.time?.label === "disable").length;
+
+          itemDataContainer.innerHTML = `
+            <p><strong>Total Items:</strong> ${totalItems}</p>
+            <p><strong>Items with Customizations:</strong> ${itemsWithCustomizations}</p>
+            <p><strong>Items without Images:</strong> ${itemsWithoutImages}</p>
+            <p><strong>Items with 0 Available Quantity:</strong> ${itemsWithZeroQty}</p>
+            <p><strong>Items with Label 'disable':</strong> ${itemsWithDisabledLabel}</p>
+          `;
+          itemDataContainer.style.display = 'block';
+        } catch (error) {
+          alert("Error processing the JSON file.");
+          console.error(error);
+        }
+      };
+      reader.readAsText(uploadedFile);
+    }
+
+    //replaced function calculateStoreData()
+    function calculateStoreData() {
+  if (!uploadedFile) {
+    alert("Please upload a JSON file first.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    try {
+      const data = JSON.parse(event.target.result);
+      const providers = data.message?.catalog?.["bpp/providers"];
+
+      if (!providers || !providers.length) {
+        storeDataContainer.innerHTML = `<p>No valid provider data found.</p>`;
+        storeDataContainer.style.display = 'block';
+        return;
+      }
+
+      const provider = providers[0];
+      const providerId = provider.id;
+      const brandName = provider.descriptor?.name || "No name available";
+      const brandLogoUrl = provider.descriptor?.symbol || "No logo available";
+      const brandImageUrl = provider.descriptor?.images?.join(", ") || "No images available";
+      const openTime = provider.locations?.[0]?.time?.range?.start || 'N/A';
+      const closeTime = provider.locations?.[0]?.time?.range?.end || 'N/A';
+
+      storeDataContainer.innerHTML = `
+        <p><strong>Provider ID:</strong> ${providerId}</p>
+        <p><strong>Brand Name:</strong> ${brandName}</p>
+        <p><strong>Brand Logo URL:</strong> <a href="${brandLogoUrl}" target="_blank">${brandLogoUrl}</a></p>
+        <p><strong>Store Open Time:</strong> ${openTime}</p>
+        <p><strong>Store Close Time:</strong> ${closeTime}</p>
+        <p><strong>Store Weekly Timings:</strong></p>
+      `;
+
+      const dayMap = { "1": "Mon", "2": "Tue", "3": "Wed", "4": "Thu", "5": "Fri", "6": "Sat", "7": "Sun" };
+      const timingByDay = {};
+
+      provider.fulfillments?.forEach(fulfillment => {
+        fulfillment.tags?.forEach(tag => {
+          if (tag.code === "timing" && Array.isArray(tag.list)) {
+            let entry = { dayFrom: '', dayTo: '', timeFrom: '', timeTo: '' };
+            tag.list.forEach(l => {
+              if (l.code === 'day_from') entry.dayFrom = l.value;
+              if (l.code === 'day_to') entry.dayTo = l.value;
+              if (l.code === 'time_from') entry.timeFrom = l.value;
+              if (l.code === 'time_to') entry.timeTo = l.value;
+            });
+
+            if (entry.dayFrom && entry.timeFrom && entry.timeTo) {
+              for (let i = +entry.dayFrom; i <= +entry.dayTo; i++) {
+                if (!timingByDay[i]) timingByDay[i] = [];
+                timingByDay[i].push(`${entry.timeFrom} to ${entry.timeTo}`);
+              }
+            }
+          }
+        });
+      });
+
+      Object.keys(timingByDay).sort().forEach(day => {
+        const label = dayMap[day] || `Day ${day}`;
+        const slots = timingByDay[day].join(', ');
+        storeDataContainer.innerHTML += `<p><strong>${label}:</strong> ${slots}</p>`;
+      });
+
+      storeDataContainer.innerHTML += `<p><strong>Brand Image URLs:</strong></p>`;
+      if (brandImageUrl !== "No images available") {
+        const imageUrls = brandImageUrl.split(", ");
+        imageUrls.forEach(url => {
+          storeDataContainer.innerHTML += `<p><a href="${url}" target="_blank">${url}</a></p>`;
+        });
+      }
+
+      storeDataContainer.style.display = 'block';
+    } catch (error) {
+      alert("Error processing the store data.");
+      console.error(error);
+    }
+  };
+  reader.readAsText(uploadedFile);
+}
+
+    // replaced function convertJsonToCsv()
+    function convertJsonToCsv() {
+  if (!uploadedFile) {
+    alert("Please upload a JSON file first.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    try {
+      const data = JSON.parse(event.target.result);
+      const providers = data.message?.catalog?.["bpp/providers"];
+      const rawItems = providers[0]?.items || [];
+      const items = rawItems.filter(i => !i.id.startsWith("C:") && !i.id.startsWith("CG:"));
+      const categories = providers[0]?.categories || [];
+
+      const customGroups = {};
+      categories.forEach(cat => {
+        if (cat.id.startsWith("C:")) {
+          const config = {};
+          const tag = cat.tags?.find(t => t.code === "config");
+          tag?.list?.forEach(e => config[e.code] = e.value);
+          customGroups[cat.id] = {
+            name: cat.descriptor?.name,
+            min: config.min,
+            max: config.max
+          };
+        }
+      });
+
+      const cgItemsByGroup = {};
+      rawItems.forEach(item => {
+        if (item.id.startsWith("CG:")) {
+          const parentTag = item.tags?.find(t => t.code === "parent");
+          const parentIds = parentTag?.list?.filter(x => x.code === "id").map(x => x.value) || [];
+          parentIds.forEach(pid => {
+            if (!cgItemsByGroup[pid]) cgItemsByGroup[pid] = [];
+            cgItemsByGroup[pid].push({
+              id: item.id,
+              name: item.descriptor?.name,
+              price: item.price?.value,
+              maxPrice: item.price?.maximum_value
+            });
+          });
+        }
+      });
+
+      const rows = [];
+      const allHeaders = new Set([
+        "Item ID", "Item Name", "Price", "Code", "Available Count", "Maximum Count",
+        "Price (Value)", "Price (Maximum Value)",
+        "C: ID", "Custom group", "CG: ID", "custom group item(CG:)", "CG: Price_Value", "CG: Price_maximum_value"
+      ]);
+
+      items.forEach(item => {
+        const base = {
+          "Item ID": item.id,
+          "Item Name": item.descriptor?.name || "No Name",
+          "Price": item.price?.value || "N/A",
+          "Code": item.descriptor?.code || "N/A",
+          "Available Count": item.quantity?.available?.count || "N/A",
+          "Maximum Count": item.quantity?.maximum?.count || "N/A",
+          "Price (Value)": item.price?.value || "N/A",
+          "Price (Maximum Value)": item.price?.maximum_value || "N/A"
+        };
+
+        const tag = item.tags?.find(t => t.code === "custom_group");
+        if (tag?.list?.length) {
+          tag.list.forEach(groupRef => {
+            const groupId = groupRef.value;
+            const group = customGroups[groupId];
+            const cgItems = cgItemsByGroup[groupId] || [];
+
+            if (cgItems.length === 0) {
+              const row = { ...base };
+              row["C: ID"] = groupId;
+              row["Custom group"] = `"${group.name} (Min: ${group.min}, Max: ${group.max})"`;
+              rows.push(row);
+            } else {
+              cgItems.forEach(cg => {
+                const row = { ...base };
+                row["C: ID"] = groupId;
+                row["Custom group"] = `"${group.name} (Min: ${group.min}, Max: ${group.max})"`;
+                row["CG: ID"] = cg.id;
+                row["custom group item(CG:)"] = cg.name;
+                row["CG: Price_Value"] = cg.price;
+                row["CG: Price_maximum_value"] = cg.maxPrice;
+                rows.push(row);
+              });
+            }
+          });
+        } else {
+          rows.push({ ...base });
+        }
+      });
+
+      const headers = Array.from(allHeaders);
+      const csv = [headers.join(",")];
+      rows.forEach(row => {
+        const rowValues = headers.map(header => row[header] || "");
+        csv.push(rowValues.join(","));
+      });
+
+      const csvContent = csv.join("\n");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([csvContent], { type: 'text/csv' }));
+
+      const fileName = uploadedFile.name.replace(/\.json$/i, '') + ".csv";
+      link.download = fileName;
+      link.click();
+    } catch (error) {
+      alert("Error processing the JSON for CSV conversion.");
+      console.error(error);
+    }
+  };
+  reader.readAsText(uploadedFile);
+}
+  </script>
+</body>
+</html>

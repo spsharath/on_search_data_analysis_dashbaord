@@ -325,8 +325,6 @@ with tab2:
 
     summary = filtered_df.groupby(['Date', 'Buyer App', 'City Code']).size().reset_index(name='Count')
     pivot = summary.pivot_table(index='Date', columns=['Buyer App', 'City Code'], values='Count', fill_value=0)
-    if 'Total Time' in summary.columns:
-    summary['Total Time'] = summary['Total Time'].astype(str)
     st.dataframe(summary)
 
     total_counts = summary.groupby('Date')['Count'].sum().reset_index()

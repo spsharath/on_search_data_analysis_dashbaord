@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Upstream JSON to CSV Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            width: 90%; 
+            max-width: 1200px; 
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 90vh;
+        }
+        .drop-zone {
+            border: 2px dashed #007bff;
+            padding: 30px;
+            border-radius: 8px;
+            color: #007bff;
+            margin-bottom: 0px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s;
+            flex-shrink: 0; 
+        }
+        .drop-zone:hover {
+            background-color: #e6f0ff;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s;
+        }
+        .btn.primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn.primary:hover {
+            background-color: #0056b3;
+        }
+        .btn.danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn.danger:hover {
+            background-color: #a71d2a;
+        }
+        .output-section {
+            flex-grow: 1;
+            overflow: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #fcfcfc;
+            text-align: left;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            table-layout: auto;
+        }
+        th, td {
+            padding: 8px;
+            border: 1px solid #ddd;
+            text-align: left;
+            word-wrap: break-word;
+            vertical-align: top;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Upstream JSON to CSV Converter</h2>
+        <div class="drop-zone" id="dropZone">Drop or browse JSON file here</div>
+        <input type="file" id="fileInput" style="display:none" accept=".json" />
+        <div class="controls">
+            <button class="btn primary" onclick="handleShowCategoryStats()">Show Category Data</button>
+            <button class="btn primary" onclick="handleDownloadCSV()">Convert & Download CSV</button>
+            <button class="btn danger" onclick="removeFile()">Remove File</button>
+        </div>
+        <div id="output" class="output-section"></div> </div>
+
+    <script>
+        let jsonData = null;
+        let detectedFormat = null; // 'petpooja', 'rista', 'urbanpiper'
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const outputDiv = document.getElementById('output');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.backgroundColor = '#e6f0ff';
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.backgroundColor = 'white';
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.backgroundColor = 'white';
+            const file = e.dataTransfer.files[0];
+            readFile(file);
+        });
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            readFile(file);
+        });
+
+        function readFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    jsonData = JSON.parse(reader.result);
+                    detectedFormat = detectJsonFormat(jsonData);
+                    console.log('JSON loaded:', jsonData);
+                    dropZone.innerText = `Loaded: ${file.name} (Detected as: ${detectedFormat ? detectedFormat.toUpperCase() : 'Unknown'})`;
+                    outputDiv.innerHTML = '';
+                    if (!detectedFormat) {
+                        outputDiv.innerHTML = '<p style="color: red;">Could not determine the JSON format. Please upload a supported structured JSON file (Petpooja, Rista, or Urban Piper).</p>';
+                    } else {
+                        outputDiv.innerHTML = `<p style="color: green;">JSON loaded successfully. Detected format: <strong>${detectedFormat.toUpperCase()}</strong>.</p>`;
+                    }
+                } catch (e) {
+                    outputDiv.innerHTML = `<p style="color: red;">Invalid JSON file. Error: ${e.message}</p>`;
+                    dropZone.innerText = 'Drop or browse JSON file here';
+                    jsonData = null;
+                    detectedFormat = null;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function detectJsonFormat(data) {
+            if (data && data.data && data.data.restaurants && data.data.categories && data.data.items &&
+                (data.ext_mapping_type === "petpooja_paytm" || (data.data.channel && data.data.channel.includes("petpooja")))) {
+                return 'petpooja';
+            }
+            if (data && data.log_142697553 && data.log_142697553.response && data.log_142697553.response.categories && data.log_142697553.response.items) {
+                return 'rista';
+            }
+            if ((data && data.menu && data.menu.categories) || (data && data.data && data.data.menu && data.data.menu.categories)) {
+                const categories = (data.menu && data.menu.categories) || (data.data && data.data.menu && data.data.menu.categories);
+                if (categories && categories.length > 0 && categories[0].title !== undefined && (categories[0].items !== undefined || categories[0].subcategories !== undefined)) {
+                    return 'urbanpiper';
+                }
+            }
+            return null;
+        }
+        const escapeCsv = (value) => {
+            if (value === null || value === undefined) {
+                return '';
+            }
+            let stringValue = String(value);
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+        };
+
+        const downloadCsvFile = (csvContent, filename) => {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            outputDiv.innerHTML += `<p style="color: green;">CSV '${filename}' downloaded successfully!</p>`;
+        };
+
+        function getPetpoojaRestaurantData() {
+            if (jsonData && jsonData.data && Array.isArray(jsonData.data.restaurants) && jsonData.data.restaurants.length > 0) {
+                return jsonData.data.restaurants[0].details;
+            }
+            return null;
+        }
+        function getPetpoojaCategories() { return jsonData && jsonData.data && Array.isArray(jsonData.data.categories) ? jsonData.data.categories : []; }
+        function getPetpoojaItems() { return jsonData && jsonData.data && Array.isArray(jsonData.data.items) ? jsonData.data.items : []; }
+        function getPetpoojaVariations() { return jsonData && jsonData.data && Array.isArray(jsonData.data.variations) ? jsonData.data.variations : []; }
+        function getPetpoojaAddonGroups() { return jsonData && jsonData.data && Array.isArray(jsonData.data.addongroups) ? jsonData.data.addongroups : []; }
+
+        function showPetpoojaCategoryStats() {
+            const categories = getPetpoojaCategories();
+            const items = getPetpoojaItems();
+            const categoryItemCounts = new Map();
+            categories.forEach(cat => {
+                categoryItemCounts.set(cat.categoryid, { name: cat.categoryname, count: 0 });
+            });
+            items.forEach(item => {
+                const categoryId = item.item_categoryid;
+                if (categoryItemCounts.has(categoryId)) {
+                    categoryItemCounts.get(categoryId).count++;
+                }
+            });
+            let html = `<h3>Category Statistics (Petpooja)</h3><table><tr><th>Category</th><th>Item Count</th></tr>`;
+            let total = 0;
+            categoryItemCounts.forEach((data) => {
+                html += `<tr><td>${escapeCsv(data.name)}</td><td>${data.count}</td></tr>`;
+                total += data.count;
+            });
+            html += `<tr><th>Total</th><th>${total}</th></tr></table>`;
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadPetpoojaCsv() {
+            const restaurantDetails = getPetpoojaRestaurantData();
+            const restaurantName = restaurantDetails ? restaurantDetails.restaurantname : 'N/A';
+            const categories = getPetpoojaCategories();
+            const items = getPetpoojaItems();
+            const variations = getPetpoojaVariations();
+            const addongroups = getPetpoojaAddonGroups();
+
+            const categoryMap = new Map();
+            categories.forEach(cat => { categoryMap.set(cat.categoryid, cat.categoryname); });
+            const variationMap = new Map();
+            variations.forEach(v => { variationMap.set(v.variationid, v); });
+            const addongroupMap = new Map();
+            addongroups.forEach(group => { addongroupMap.set(group.addongroupid, group); });
+
+            const rows = [
+                ["Restaurant Name", "Category", "Sub-Category", "Item ID", "Item Name", "Item Description", "Item Price", "Item Stock", "Item Status", "Item Image URL",
+                 "Variation Group Name", "Variation/Addon ID", "Variation/Addon Name", "Variation/Addon Price", "Variation/Addon Status",
+                 "Addon Group Name", "Addon Min Select", "Addon Max Select"]
+            ];
+
+            items.forEach(item => {
+                const categoryName = categoryMap.get(item.item_categoryid) || 'N/A';
+                const subCategoryName = categoryName; 
+
+                rows.push([
+                    escapeCsv(restaurantName),
+                    escapeCsv(categoryName),
+                    escapeCsv(subCategoryName),
+                    escapeCsv(item.itemid),
+                    escapeCsv(item.itemname),
+                    escapeCsv(item.itemdescription),
+                    escapeCsv(item.price),
+                    escapeCsv(item.in_stock),
+                    escapeCsv(item.active === "1" ? "Active" : "Inactive"),
+                    escapeCsv(item.item_image_url),
+                    '', '', '', '', '', '', '', ''
+                ]);
+
+                if (item.itemallowvariation === "1" && item.variation && item.variation.length > 0) {
+                    item.variation.forEach(v => {
+                        rows.push([
+                            escapeCsv(restaurantName), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(item.itemid), escapeCsv(item.itemname),
+                            '', '', '', '', '',
+                            escapeCsv(item.variation_groupname),
+                            escapeCsv(v.id),
+                            escapeCsv(v.name),
+                            escapeCsv(v.price),
+                            escapeCsv(v.active === "1" ? "Active" : "Inactive"),
+                            '', '', ''
+                        ]);
+                    });
+                }
+
+                if (item.itemallowaddon === "1" && item.addon && item.addon.length > 0) {
+                    item.addon.forEach(addonRef => {
+                        const group = addongroupMap.get(addonRef.addon_group_id);
+                        if (group) {
+                            group.addongroupitems.forEach(addonItem => {
+                                rows.push([
+                                    escapeCsv(restaurantName), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(item.itemid), escapeCsv(item.itemname),
+                                    '', '', '', '', '', '', '', '', '', '',
+                                    escapeCsv(group.addongroup_name),
+                                    escapeCsv(addonRef.addon_item_selection_min),
+                                    escapeCsv(addonRef.addon_item_selection_max),
+                                    escapeCsv(addonItem.addonitem_name),
+                                    escapeCsv(addonItem.addonitem_price),
+                                    escapeCsv(addonItem.active === "1" ? "Active" : "Inactive")
+                                ]);
+                            });
+                        }
+                    });
+                }
+            });
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'petpooja_menu_export.csv');
+        }
+
+        function getRistaResponseData() {
+            return jsonData && jsonData.log_142697553 && jsonData.log_142697553.response ? jsonData.log_142697553.response : null;
+        }
+        function getRistaCategories(responseData) { return responseData && responseData.categories ? responseData.categories : []; }
+        function getRistaItems(responseData) { return responseData && responseData.items ? responseData.items : []; }
+        function getRistaItemTags(responseData) { return responseData && responseData.itemTags ? responseData.itemTags : []; }
+        function getRistaOptionSets(responseData) { return responseData && responseData.optionSets ? responseData.optionSets : []; }
+
+        function showRistaCategoryStats() {
+            const responseData = getRistaResponseData();
+            if (!responseData) { outputDiv.innerHTML = '<p style="color: red;">Invalid Rista JSON structure: Missing response data for stats.</p>'; return; }
+
+            const categories = getRistaCategories(responseData);
+            const items = getRistaItems(responseData);
+            const categoryItemCounts = new Map();
+
+            categories.forEach(cat => {
+                categoryItemCounts.set(cat.categoryId, { name: cat.name, count: 0 });
+                if (cat.subCategories) {
+                    cat.subCategories.forEach(subCat => {
+                        categoryItemCounts.set(subCat.subCategoryId, { name: `${cat.name} > ${subCat.name}`, count: 0 });
+                    });
+                }
+            });
+
+            items.forEach(item => {
+                const subCategoryId = item.subCategoryId;
+                const categoryId = item.categoryId;
+
+                if (subCategoryId && categoryItemCounts.has(subCategoryId)) {
+                    categoryItemCounts.get(subCategoryId).count++;
+                } else if (categoryId && categoryItemCounts.has(categoryId)) {
+                    categoryItemCounts.get(categoryId).count++;
+                }
+            });
+
+            let html = `<h3>Category Statistics (Rista)</h3><table><tr><th>Category / Sub-Category</th><th>Item Count</th></tr>`;
+            let total = 0;
+            categoryItemCounts.forEach((data) => {
+                html += `<tr><td>${escapeCsv(data.name)}</td><td>${data.count}</td></tr>`;
+                total += data.count;
+            });
+            html += `<tr><th>Total</th><th>${total}</th></tr></table>`;
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadRistaCsv() {
+            const responseData = getRistaResponseData();
+            if (!responseData) { outputDiv.innerHTML = '<p style="color: red;">Invalid Rista JSON structure: Missing response data for CSV.</p>'; return; }
+
+            const categories = getRistaCategories(responseData);
+            const items = getRistaItems(responseData);
+            const itemTags = getRistaItemTags(responseData);
+            const optionSets = getRistaOptionSets(responseData);
+
+            const categoryMap = new Map();
+            categories.forEach(cat => {
+                categoryMap.set(cat.categoryId, cat.name);
+                if (cat.subCategories) {
+                    cat.subCategories.forEach(subCat => {
+                        categoryMap.set(subCat.subCategoryId, subCat.name);
+                    });
+                }
+            });
+            const itemTagMap = new Map();
+            itemTags.forEach(tag => { itemTagMap.set(tag.itemTagId, tag.name); });
+            const optionSetMap = new Map();
+            optionSets.forEach(os => { optionSetMap.set(os.optionSetId, os); });
+
+            const rows = [
+                ["Item Name", "Item ID", "SKU ID", "Description", "Status", "Category Name", "Sub-Category Name", "Item Tags", "Image URL",
+                 "Option Set ID", "Option Set Display Name", "Option Set Min", "Option Set Max",
+                 "Option ID", "Option Item ID", "Option Name", "Option Price"]
+            ];
+
+            items.forEach(item => {
+                const categoryName = categoryMap.get(item.categoryId) || 'N/A';
+                const subCategoryName = item.subCategoryId ? categoryMap.get(item.subCategoryId) : categoryName;
+                const tags = (item.itemTagIds || []).map(tagId => itemTagMap.get(tagId) || '').filter(name => name !== '').join('; ');
+
+                rows.push([
+                    escapeCsv(item.itemName), escapeCsv(item.itemId), escapeCsv(item.skuCode), escapeCsv(item.description),
+                    escapeCsv(item.status), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(tags), escapeCsv(item.imageURL),
+                    '', '', '', '',
+                    '', '', '', '' 
+                ]);
+
+                if (item.optionSetIds && item.optionSetIds.length > 0) {
+                    item.optionSetIds.forEach(osId => {
+                        const optionSet = optionSetMap.get(osId);
+                        if (optionSet) {
+                            rows.push([
+                                escapeCsv(item.itemName), escapeCsv(item.itemId), '', '', '', '', '', '', '',
+                                escapeCsv(optionSet.optionSetId), escapeCsv(optionSet.displayName), escapeCsv(optionSet.min), escapeCsv(optionSet.max),
+                                '', '', '', ''
+                            ]);
+
+                            if (optionSet.options && optionSet.options.length > 0) {
+                                optionSet.options.forEach(option => {
+                                    rows.push([
+                                        escapeCsv(item.itemName), escapeCsv(item.itemId), '', '', '', '', '', '', '',
+                                        escapeCsv(optionSet.optionSetId), escapeCsv(optionSet.displayName), escapeCsv(optionSet.min), escapeCsv(optionSet.max),
+                                        escapeCsv(option.optionId), escapeCsv(option.itemId), escapeCsv(option.optionName), escapeCsv(option.price)
+                                    ]);
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'rista_menu_export.csv');
+        }
+
+        function getUrbanPiperCategories() {
+            return jsonData && jsonData.data && jsonData.data.menu && Array.isArray(jsonData.data.menu.categories) ? jsonData.data.menu.categories :
+                   jsonData && jsonData.menu && Array.isArray(jsonData.menu.categories) ? jsonData.menu.categories : [];
+        }
+
+        function showUrbanPiperCategoryStats() {
+            const categories = getUrbanPiperCategories();
+            if (!categories.length) {
+                outputDiv.innerHTML = '<p style="color: red;">No categories found in Urban Piper JSON for stats.</p>';
+                return;
+            }
+
+            const categoryItemCounts = new Map();
+
+            categories.forEach(cat => {
+                let catTitle = cat.title || 'Unknown Category';
+                categoryItemCounts.set(cat.title, { name: catTitle, count: 0 });
+
+                // Count items directly under the category
+                if (Array.isArray(cat.items)) {
+                    categoryItemCounts.get(cat.title).count += cat.items.length;
+                }
+
+                // Count items in subcategories
+                if (Array.isArray(cat.subcategories)) {
+                    cat.subcategories.forEach(sub => {
+                        const subTitle = sub.title || catTitle; // Use category title as subcategory if sub.title is missing
+                        const fullPath = `${catTitle} > ${subTitle}`;
+                        categoryItemCounts.set(fullPath, { name: fullPath, count: 0 });
+                        if (Array.isArray(sub.items)) {
+                            categoryItemCounts.get(fullPath).count += sub.items.length;
+                        }
+                    });
+                }
+            });
+
+            let html = `<h3>Category Statistics (Urban Piper)</h3><table><tr><th>Category / Sub-Category</th><th>Item Count</th></tr>`;
+            let total = 0;
+            categoryItemCounts.forEach((data) => {
+                html += `<tr><td>${escapeCsv(data.name)}</td><td>${data.count}</td></tr>`;
+                total += data.count;
+            });
+            html += `<tr><th>Total</th><th>${total}</th></tr></table>`;
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadUrbanPiperCsv() {
+            const categories = getUrbanPiperCategories();
+            if (!categories.length) {
+                outputDiv.innerHTML = '<p style="color: red;">No categories found in Urban Piper JSON to export.</p>';
+                return;
+            }
+
+            const rows = [
+                ["Item Title", "Item Ref ID", "Item Price", "Item In Stock", "Item Description", "Item Image URL",
+                 "Subcategory Title", "Category Title", "Addon Group Title", "Addon Title", "Addon Price", "Addon In Stock"]
+            ];
+
+            const processUrbanPiperItem = (item, subcatTitle, catTitle) => {
+                const base = [
+                    escapeCsv(item.title || ''),
+                    escapeCsv(item.ref_id || ''),
+                    escapeCsv(item.price || ''),
+                    escapeCsv(item.in_stock || ''),
+                    escapeCsv(item.description || ''),
+                    escapeCsv(item.image_url || ''),
+                    escapeCsv(subcatTitle),
+                    escapeCsv(catTitle)
+                ];
+
+                const addOnGroups = item.add_on_groups || item.addOnGroups || [];
+
+                if (Array.isArray(addOnGroups) && addOnGroups.length > 0) {
+                    addOnGroups.forEach(group => {
+                        if (Array.isArray(group.addons)) {
+                            group.addons.forEach(addon => {
+                                rows.push([
+                                    ...base,
+                                    escapeCsv(group.title || ''),
+                                    escapeCsv(addon.title || ''),
+                                    escapeCsv(addon.price || ''),
+                                    escapeCsv(addon.in_stock || '')
+                                ]);
+                            });
+                        }
+                    });
+                } else {
+                    rows.push([...base, '', '', '', '']); // No addons, push empty addon fields
+                }
+            };
+
+            categories.forEach(cat => {
+                const catTitle = cat.title || '';
+
+                if (Array.isArray(cat.subcategories) && cat.subcategories.length > 0) {
+                    cat.subcategories.forEach(sub => {
+                        const subTitle = sub.title || catTitle;
+                        if (Array.isArray(sub.items)) {
+                            sub.items.forEach(item => processUrbanPiperItem(item, subTitle, catTitle));
+                        }
+                    });
+                }
+                
+                if (Array.isArray(cat.items)) {
+                    cat.items.forEach(item => processUrbanPiperItem(item, catTitle, catTitle));
+                }
+            });
+
+            if (rows.length === 1) {
+                outputDiv.innerHTML = '<p style="color: red;">No items found to export for Urban Piper format.</p>';
+                return;
+            }
+
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'urbanpiper_menu_export.csv');
+        }
+
+        function handleShowCategoryStats() {
+            if (!jsonData) {
+                outputDiv.innerHTML = '<p style="color: red;">Please upload a file first!</p>';
+                return;
+            }
+            if (!detectedFormat) {
+                outputDiv.innerHTML = '<p style="color: red;">Could not determine JSON format. Cannot show stats.</p>';
+                return;
+            }
+
+            outputDiv.innerHTML = 'Generating stats...';
+            switch (detectedFormat) {
+                case 'petpooja': showPetpoojaCategoryStats(); break;
+                case 'rista': showRistaCategoryStats(); break;
+                case 'urbanpiper': showUrbanPiperCategoryStats(); break;
+                default: outputDiv.innerHTML = '<p style="color: red;">Unsupported JSON format for stats.</p>';
+            }
+        }
+
+        function handleDownloadCSV() {
+            if (!jsonData) {
+                outputDiv.innerHTML = '<p style="color: red;">Please upload a file first!</p>';
+                return;
+            }
+            if (!detectedFormat) {
+                outputDiv.innerHTML = '<p style="color: red;">Could not determine JSON format. Cannot download CSV.</p>';
+                return;
+            }
+
+            outputDiv.innerHTML = 'Converting to CSV...';
+            switch (detectedFormat) {
+                case 'petpooja': downloadPetpoojaCsv(); break;
+                case 'rista': downloadRistaCsv(); break;
+                case 'urbanpiper': downloadUrbanPiperCsv(); break;
+                default: outputDiv.innerHTML = '<p style="color: red;">Unsupported JSON format for CSV conversion.</p>';
+            }
+        }
+
+        function removeFile() {
+            jsonData = null;
+            detectedFormat = null;
+            dropZone.innerText = 'Drop or browse JSON file here';
+            fileInput.value = null; // Clear the file input
+            outputDiv.innerHTML = ''; // Clear the output section
+        }
+    </script>
+</body>
+</html>

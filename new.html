@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Universal JSON to CSV Converter (Enhanced Dashboards)</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow-y: auto; /* Allow body to scroll if content is too long */
+            padding: 20px; /* Add some padding around the content */
+            box-sizing: border-box; /* Include padding in element's total width and height */
+        }
+        .main-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            width: 90%;
+            max-width: 1200px;
+            background: white; /* Wrapper background */
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+        }
+        /* Removed .dashboard-info as it's static and the new stats are dynamic */
+
+        .container {
+            background: white; /* Inner container for the tool itself */
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05); /* Lighter shadow for inner container */
+            width: 100%; /* Take full width of wrapper */
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-height: 400px; /* Ensure minimum height */
+        }
+        .drop-zone {
+            border: 2px dashed #007bff;
+            padding: 30px;
+            border-radius: 8px;
+            color: #007bff;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s;
+        }
+        .drop-zone:hover {
+            background-color: #e6f0ff;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.3s;
+        }
+        .btn.primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn.primary:hover {
+            background-color: #0056b3;
+        }
+        .btn.danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .btn.danger:hover {
+            background-color: #a71d2a;
+        }
+        .output-section {
+            flex-grow: 1;
+            overflow: auto;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #fcfcfc;
+            text-align: left;
+            position: relative;
+        }
+        .output-section h3 {
+            margin-top: 0;
+            color: #0056b3; /* Darker blue for section headers */
+            margin-bottom: 10px;
+        }
+        .output-section h4 {
+            color: #333;
+            margin-top: 15px;
+            margin-bottom: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+            table-layout: auto;
+            margin-bottom: 15px; /* Space between tables */
+        }
+        th, td {
+            padding: 8px;
+            border: 1px solid #ddd;
+            text-align: left;
+            word-wrap: break-word;
+            vertical-align: top;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .summary-box {
+            background-color: #e6f0ff;
+            border: 1px solid #cce0ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #004085;
+        }
+        .summary-box span {
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <div class="container">
+            <h2>📄 Universal JSON to CSV Converter</h2>
+            <div class="drop-zone" id="dropZone">Drop or browse JSON file here</div>
+            <input type="file" id="fileInput" style="display:none" accept=".json" />
+            <div class="controls">
+                <button class="btn primary" onclick="handleShowCategoryStats()">Show Menu Insights</button>
+                <button class="btn primary" onclick="handleDownloadCSV()">Convert & Download CSV</button>
+                <button class="btn primary" onclick="handlePrettyPrintJson()">Show Raw JSON</button>
+                <button class="btn danger" onclick="removeFile()">Clear All</button>
+            </div>
+            <div id="output" class="output-section"></div> </div>
+    </div>
+
+    <script>
+        let jsonData = null;
+        let detectedFormat = null; // 'petpooja', 'rista', 'urbanpiper'
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const outputDiv = document.getElementById('output'); // Reference to the output div
+
+        // Event Listeners for File Input/Drag & Drop
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.style.backgroundColor = '#e6f0ff';
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.style.backgroundColor = 'white';
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.backgroundColor = 'white';
+            const file = e.dataTransfer.files[0];
+            readFile(file);
+        });
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            readFile(file);
+        });
+
+        function readFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            outputDiv.innerHTML = 'Loading file... <span class="loader"></span>';
+            reader.onload = () => {
+                try {
+                    jsonData = JSON.parse(reader.result);
+                    detectedFormat = detectJsonFormat(jsonData);
+                    console.log('JSON loaded:', jsonData); // Still logs to console for debugging
+                    dropZone.innerText = `Loaded: ${file.name} (Detected as: ${detectedFormat ? detectedFormat.toUpperCase() : 'Unknown'})`;
+                    if (!detectedFormat) {
+                        outputDiv.innerHTML = '<p style="color: red;">Could not determine the JSON format. Please upload a supported structured JSON file (Petpooja, Rista, or Urban Piper).</p>';
+                    } else {
+                        outputDiv.innerHTML = `<p style="color: green;">JSON loaded successfully. Detected format: <strong>${detectedFormat.toUpperCase()}</strong>. Ready for action!</p>`;
+                    }
+                } catch (e) {
+                    outputDiv.innerHTML = `<p style="color: red;">Invalid JSON file. Error: ${e.message}</p>`;
+                    dropZone.innerText = 'Drop or browse JSON file here';
+                    jsonData = null;
+                    detectedFormat = null;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function detectJsonFormat(data) {
+            // Check for Petpooja format
+            if (data && data.data && data.data.restaurants && data.data.categories && data.data.items &&
+                (data.ext_mapping_type === "petpooja_paytm" || (data.data.channel && data.data.channel.includes("petpooja")))) {
+                return 'petpooja';
+            }
+            // Check for Rista format (log_142697546 / log_142697553 structure)
+            // Look for `log_` keys and then `response.categories` etc.
+            if (data && Object.keys(data).some(key => key.startsWith('log_')) && 
+                (data.log_142697553 || data.log_142697546) && 
+                ((data.log_142697553 && data.log_142697553.response && data.log_142697553.response.categories && data.log_142697553.response.items) ||
+                 (data.log_142697546 && typeof data.log_142697546.response === 'string' && data.log_142697546.response.includes('menu.sync')))) {
+                return 'rista';
+            }
+            // Check for Urban Piper format
+            if ((data && data.menu && data.menu.categories) || (data && data.data && data.data.menu && data.data.menu.categories)) {
+                const categories = (data.menu && data.menu.categories) || (data.data && data.data.menu && data.data.menu.categories);
+                if (categories && categories.length > 0 && categories[0].title !== undefined && (categories[0].items !== undefined || categories[0].subcategories !== undefined)) {
+                    return 'urbanpiper';
+                }
+            }
+            return null;
+        }
+
+        // --- Helper for CSV Export (universal) ---
+        const escapeCsv = (value) => {
+            if (value === null || value === undefined) {
+                return '';
+            }
+            let stringValue = String(value);
+            if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+                return `"${stringValue.replace(/"/g, '""')}"`;
+            }
+            return stringValue;
+        };
+
+        const downloadCsvFile = (csvContent, filename) => {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href); // Clean up the object URL
+            outputDiv.innerHTML += `<p style="color: green;">CSV '${filename}' downloaded successfully!</p>`;
+        };
+
+
+        // --- Petpooja Format Handlers ---
+        function getPetpoojaRestaurantData() {
+            if (jsonData && jsonData.data && Array.isArray(jsonData.data.restaurants) && jsonData.data.restaurants.length > 0) {
+                return jsonData.data.restaurants[0].details;
+            }
+            return null;
+        }
+        function getPetpoojaCategories() { return jsonData && jsonData.data && Array.isArray(jsonData.data.categories) ? jsonData.data.categories : []; }
+        function getPetpoojaItems() { return jsonData && jsonData.data && Array.isArray(jsonData.data.items) ? jsonData.data.items : []; }
+        function getPetpoojaVariations() { return jsonData && jsonData.data && Array.isArray(jsonData.data.variations) ? jsonData.data.variations : []; }
+        function getPetpoojaAddonGroups() { return jsonData && jsonData.data && Array.isArray(jsonData.data.addongroups) ? jsonData.data.addongroups : []; }
+
+        function showPetpoojaCategoryStats() {
+            const categories = getPetpoojaCategories();
+            const items = getPetpoojaItems();
+            const variations = getPetpoojaVariations();
+            const addongroups = getPetpoojaAddonGroups();
+
+            if (!categories.length && !items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No categories or items found in Petpooja data to generate insights.</p>';
+                return;
+            }
+
+            let html = `<h3>Menu Insights (Petpooja)</h3>`;
+
+            // --- Overall Summary ---
+            let totalItems = items.length;
+            let activeItems = items.filter(item => item.active === "1").length;
+            let inactiveItems = totalItems - activeItems;
+            let itemsMissingDesc = items.filter(item => !item.itemdescription || item.itemdescription.trim() === '').length;
+            let itemsMissingImage = items.filter(item => !item.item_image_url || item.item_image_url.trim() === '').length;
+            let totalAddons = 0;
+            let itemsWithAddons = 0;
+            let totalVariants = 0;
+            let itemsWithVariants = 0;
+            let sumPrices = 0;
+            let pricedItemsCount = 0;
+            
+            items.forEach(item => {
+                const itemPrice = parseFloat(item.price);
+                if (!isNaN(itemPrice) && itemPrice > 0) { // Consider items with valid positive prices
+                    sumPrices += itemPrice;
+                    pricedItemsCount++;
+                }
+
+                if (item.itemallowaddon === "1" && item.addon && item.addon.length > 0) {
+                    itemsWithAddons++;
+                    item.addon.forEach(addonRef => {
+                        const group = addongroups.find(g => g.addongroupid === addonRef.addon_group_id);
+                        if (group && group.addongroupitems) {
+                            totalAddons += group.addongroupitems.length;
+                        }
+                    });
+                }
+                if (item.itemallowvariation === "1" && item.variation && item.variation.length > 0) {
+                    itemsWithVariants++;
+                    totalVariants += item.variation.length;
+                }
+            });
+
+            html += `<div class="summary-box">
+                        Overall Menu Summary: <br>
+                        <span>Total Items: ${totalItems}</span> |
+                        <span>Active: ${activeItems}</span> |
+                        <span>Inactive: ${inactiveItems}</span> |
+                        <span>Missing Description: ${itemsMissingDesc}</span> |
+                        <span>Missing Image: ${itemsMissingImage}</span> |
+                        <span>Average Item Price: ${pricedItemsCount > 0 ? (sumPrices / pricedItemsCount).toFixed(2) : 'N/A'} &#8377;</span>
+                    </div>`;
+
+            // --- Category Performance ---
+            html += `<h4>Category Performance Overview</h4>`;
+            const categoryMap = new Map();
+            categories.forEach(cat => {
+                categoryMap.set(cat.categoryid, {
+                    name: cat.categoryname,
+                    itemCount: 0,
+                    activeCount: 0,
+                    inactiveCount: 0,
+                    totalPrice: 0,
+                    pricedItemCount: 0
+                });
+            });
+
+            items.forEach(item => {
+                const catData = categoryMap.get(item.item_categoryid);
+                if (catData) {
+                    catData.itemCount++;
+                    if (item.active === "1") {
+                        catData.activeCount++;
+                    } else {
+                        catData.inactiveCount++;
+                    }
+                    const itemPrice = parseFloat(item.price);
+                    if (!isNaN(itemPrice) && itemPrice > 0) {
+                        catData.totalPrice += itemPrice;
+                        catData.pricedItemCount++;
+                    }
+                }
+            });
+
+            html += `<table>
+                        <tr>
+                            <th>Category</th>
+                            <th>Total Items</th>
+                            <th>Active Items</th>
+                            <th>Inactive Items</th>
+                            <th>Avg Price</th>
+                        </tr>`;
+            categoryMap.forEach((data) => {
+                const avgPrice = data.pricedItemCount > 0 ? (data.totalPrice / data.pricedItemCount).toFixed(2) : 'N/A';
+                html += `<tr>
+                            <td>${escapeCsv(data.name)}</td>
+                            <td>${data.itemCount}</td>
+                            <td>${data.activeCount}</td>
+                            <td>${data.inactiveCount}</td>
+                            <td>${avgPrice !== 'N/A' ? avgPrice + ' &#8377;' : avgPrice}</td>
+                        </tr>`;
+            });
+            html += `</table>`;
+
+            // --- Item Completeness Details ---
+            html += `<h4>Item Completeness Details</h4>`;
+            let missingDetailsItems = items.filter(item => !item.itemdescription || item.itemdescription.trim() === '' || !item.item_image_url || item.item_image_url.trim() === '');
+            if (missingDetailsItems.length > 0) {
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Missing Description</th>
+                                <th>Missing Image</th>
+                            </tr>`;
+                missingDetailsItems.forEach(item => {
+                    const categoryName = categoryMap.get(item.item_categoryid) || 'N/A';
+                    const missingDesc = (!item.itemdescription || item.itemdescription.trim() === '') ? 'Yes' : 'No';
+                    const missingImage = (!item.item_image_url || item.item_image_url.trim() === '') ? 'Yes' : 'No';
+                    html += `<tr>
+                                <td>${escapeCsv(item.itemname)}</td>
+                                <td>${escapeCsv(categoryName)}</td>
+                                <td>${missingDesc}</td>
+                                <td>${missingImage}</td>
+                            </tr>`;
+                });
+                html += `</table>`;
+            } else {
+                html += `<p style="color: green;">All items have descriptions and images!</p>`;
+            }
+
+            // --- Add-on & Variant Analysis ---
+            html += `<h4>Add-on & Variant Analysis</h4>`;
+            html += `<p>Items with Add-ons: ${itemsWithAddons} (${itemsWithAddons > 0 ? (itemsWithAddons / totalItems * 100).toFixed(2) : 0}%)</p>`;
+            html += `<p>Items with Variants: ${itemsWithVariants} (${itemsWithVariants > 0 ? (itemsWithVariants / totalItems * 100).toFixed(2) : 0}%)</p>`;
+            html += `<p>Average Add-ons per Item (with add-ons): ${itemsWithAddons > 0 ? (totalAddons / itemsWithAddons).toFixed(2) : 'N/A'}</p>`;
+            html += `<p>Average Variants per Item (with variants): ${itemsWithVariants > 0 ? (totalVariants / itemsWithVariants).toFixed(2) : 'N/A'}</p>`;
+
+            // Identify items with most add-ons/variants for complexity
+            let complexItems = items.map(item => {
+                let currentItemAddons = 0;
+                if (item.itemallowaddon === "1" && item.addon) {
+                    item.addon.forEach(addonRef => {
+                        const group = addongroups.find(g => g.addongroupid === addonRef.addon_group_id);
+                        if (group && group.addongroupitems) {
+                            currentItemAddons += group.addongroupitems.length;
+                        }
+                    });
+                }
+                let currentItemVariants = (item.itemallowvariation === "1" && item.variation) ? item.variation.length : 0;
+                return {
+                    name: item.itemname,
+                    category: categoryMap.get(item.item_categoryid) || 'N/A',
+                    addonCount: currentItemAddons,
+                    variantCount: currentItemVariants,
+                    totalOptions: currentItemAddons + currentItemVariants
+                };
+            }).sort((a, b) => b.totalOptions - a.totalOptions); // Sort descending by total options
+
+            if (complexItems.filter(i => i.totalOptions > 0).length > 0) {
+                html += `<h4>Top 5 Most Configurable Items:</h4>`;
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Add-ons</th>
+                                <th>Variants</th>
+                                <th>Total Options</th>
+                            </tr>`;
+                complexItems.slice(0, 5).forEach(item => { // Show top 5
+                    if (item.totalOptions > 0) {
+                        html += `<tr>
+                                    <td>${escapeCsv(item.name)}</td>
+                                    <td>${escapeCsv(item.category)}</td>
+                                    <td>${item.addonCount}</td>
+                                    <td>${item.variantCount}</td>
+                                    <td>${item.totalOptions}</td>
+                                </tr>`;
+                    }
+                });
+                html += `</table>`;
+            } else {
+                html += `<p>No items with configurable add-ons or variants found.</p>`;
+            }
+
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadPetpoojaCsv() {
+            const restaurantDetails = getPetpoojaRestaurantData();
+            const restaurantName = restaurantDetails ? restaurantDetails.restaurantname : 'N/A';
+            const categories = getPetpoojaCategories();
+            const items = getPetpoojaItems();
+            const variations = getPetpoojaVariations();
+            const addongroups = getPetpoojaAddonGroups();
+
+            if (!items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No items found in Petpooja data to export.</p>';
+                return;
+            }
+
+            const categoryMap = new Map();
+            categories.forEach(cat => { categoryMap.set(cat.categoryid, cat.categoryname); });
+            const variationMap = new Map();
+            variations.forEach(v => { variationMap.set(v.variationid, v); });
+            const addongroupMap = new Map();
+            addongroups.forEach(group => { addongroupMap.set(group.addongroupid, group); });
+
+            const rows = [
+                ["Restaurant Name", "Category", "Sub-Category", "Item ID", "Item Name", "Item Description", "Item Price", "Item Stock", "Item Status", "Item Image URL",
+                 "Variation Group Name", "Variation/Addon ID", "Variation/Addon Name", "Variation/Addon Price", "Variation/Addon Status",
+                 "Addon Group Name", "Addon Min Select", "Addon Max Select"]
+            ];
+
+            items.forEach(item => {
+                const categoryName = categoryMap.get(item.item_categoryid) || 'N/A';
+                const subCategoryName = categoryName; // As per instruction, if no subcategory, category is subcategory
+
+                rows.push([
+                    escapeCsv(restaurantName),
+                    escapeCsv(categoryName),
+                    escapeCsv(subCategoryName),
+                    escapeCsv(item.itemid),
+                    escapeCsv(item.itemname),
+                    escapeCsv(item.itemdescription),
+                    escapeCsv(item.price),
+                    escapeCsv(item.in_stock),
+                    escapeCsv(item.active === "1" ? "Active" : "Inactive"),
+                    escapeCsv(item.item_image_url),
+                    '', '', '', '', '', '', '', ''
+                ]);
+
+                if (item.itemallowvariation === "1" && item.variation && item.variation.length > 0) {
+                    item.variation.forEach(v => {
+                        rows.push([
+                            escapeCsv(restaurantName), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(item.itemid), escapeCsv(item.itemname),
+                            '', '', '', '', '',
+                            escapeCsv(item.variation_groupname),
+                            escapeCsv(v.id),
+                            escapeCsv(v.name),
+                            escapeCsv(v.price),
+                            escapeCsv(v.active === "1" ? "Active" : "Inactive"),
+                            '', '', ''
+                        ]);
+                    });
+                }
+
+                if (item.itemallowaddon === "1" && item.addon && item.addon.length > 0) {
+                    item.addon.forEach(addonRef => {
+                        const group = addongroupMap.get(addonRef.addon_group_id);
+                        if (group) {
+                            group.addongroupitems.forEach(addonItem => {
+                                rows.push([
+                                    escapeCsv(restaurantName), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(item.itemid), escapeCsv(item.itemname),
+                                    '', '', '', '', '', '', '', '', '', '',
+                                    escapeCsv(group.addongroup_name),
+                                    escapeCsv(addonRef.addon_item_selection_min),
+                                    escapeCsv(addonRef.addon_item_selection_max),
+                                    escapeCsv(addonItem.addonitem_name),
+                                    escapeCsv(addonItem.addonitem_price),
+                                    escapeCsv(addonItem.active === "1" ? "Active" : "Inactive")
+                                ]);
+                            });
+                        }
+                    });
+                }
+            });
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'petpooja_menu_export.csv');
+        }
+
+
+        // --- Rista Format Handlers ---
+        function getRistaResponseData() {
+            return jsonData && jsonData.log_142697553 && jsonData.log_142697553.response ? jsonData.log_142697553.response : null;
+        }
+        function getRistaCategories(responseData) { return responseData && responseData.categories ? responseData.categories : []; }
+        function getRistaItems(responseData) { return responseData && responseData.items ? responseData.items : []; }
+        function getRistaItemTags(responseData) { return responseData && responseData.itemTags ? responseData.itemTags : []; }
+        function getRistaOptionSets(responseData) { return responseData && responseData.optionSets ? responseData.optionSets : []; }
+
+        function showRistaCategoryStats() {
+            const responseData = getRistaResponseData();
+            if (!responseData || !responseData.categories || !responseData.items) {
+                outputDiv.innerHTML = '<p style="color: red;">Invalid Rista JSON structure: Missing response data for insights.</p>';
+                return;
+            }
+
+            const categories = getRistaCategories(responseData);
+            const items = getRistaItems(responseData);
+            const optionSets = getRistaOptionSets(responseData); // For add-on/variant analysis
+
+            if (!categories.length && !items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No categories or items found in Rista data to generate insights.</p>';
+                return;
+            }
+
+            let html = `<h3>Menu Insights (Rista)</h3>`;
+
+            // --- Overall Summary ---
+            let totalItems = items.length;
+            let activeItems = items.filter(item => item.status === "Active").length;
+            let inactiveItems = totalItems - activeItems;
+            let itemsMissingDesc = items.filter(item => !item.description || item.description.trim() === '').length;
+            let itemsMissingImage = items.filter(item => !item.imageURL || item.imageURL.trim() === '').length;
+            let totalAddonsVariants = 0; // In Rista, options are often variants/add-ons
+            let itemsWithAddonsVariants = 0;
+            let sumPrices = 0;
+            let pricedItemsCount = 0;
+            
+            items.forEach(item => {
+                const itemPrice = parseFloat(item.price);
+                if (!isNaN(itemPrice) && itemPrice > 0) { // Consider items with valid positive prices
+                    sumPrices += itemPrice;
+                    pricedItemsCount++;
+                }
+
+                if (item.optionSetIds && item.optionSetIds.length > 0) {
+                    itemsWithAddonsVariants++;
+                    item.optionSetIds.forEach(osId => {
+                        const optionSet = optionSets.find(os => os.optionSetId === osId);
+                        if (optionSet && optionSet.options) {
+                            totalAddonsVariants += optionSet.options.length;
+                        }
+                    });
+                }
+            });
+
+            html += `<div class="summary-box">
+                        Overall Menu Summary: <br>
+                        <span>Total Items: ${totalItems}</span> |
+                        <span>Active: ${activeItems}</span> |
+                        <span>Inactive: ${inactiveItems}</span> |
+                        <span>Missing Description: ${itemsMissingDesc}</span> |
+                        <span>Missing Image: ${itemsMissingImage}</span> |
+                        <span>Average Item Price: ${pricedItemsCount > 0 ? (sumPrices / pricedItemsCount).toFixed(2) : 'N/A'}</span>
+                    </div>`;
+
+            // --- Category Performance ---
+            html += `<h4>Category Performance Overview</h4>`;
+            const categoryMap = new Map(); // categoryId -> {name, itemCount, activeCount, inactiveCount, totalPrice, pricedItemCount}
+            const subCategoryMap = new Map(); // subCategoryId -> {name, parentId}
+
+            categories.forEach(cat => {
+                categoryMap.set(cat.categoryId, {
+                    name: cat.name,
+                    itemCount: 0,
+                    activeCount: 0,
+                    inactiveCount: 0,
+                    totalPrice: 0,
+                    pricedItemCount: 0
+                });
+                if (cat.subCategories) {
+                    cat.subCategories.forEach(subCat => {
+                        subCategoryMap.set(subCat.subCategoryId, { name: subCat.name, parentId: cat.categoryId });
+                    });
+                }
+            });
+
+            items.forEach(item => {
+                let targetCategoryId = item.subCategoryId || item.categoryId;
+                let targetCategoryData = categoryMap.get(targetCategoryId);
+
+                // If it's a subcategory, update the parent category's counts as well
+                if (item.subCategoryId && subCategoryMap.has(item.subCategoryId)) {
+                     // Get the parent category data using the parentId from subCategoryMap
+                    let parentCatId = subCategoryMap.get(item.subCategoryId).parentId;
+                    let parentCatData = categoryMap.get(parentCatId);
+                    if(parentCatData) {
+                        parentCatData.itemCount++;
+                        if (item.status === "Active") parentCatData.activeCount++; else parentCatData.inactiveCount++;
+                        const itemPrice = parseFloat(item.price);
+                        if (!isNaN(itemPrice) && itemPrice > 0) {
+                            parentCatData.totalPrice += itemPrice;
+                            parentCatData.pricedItemCount++;
+                        }
+                    }
+                } else if (targetCategoryData) { // Direct category item
+                    targetCategoryData.itemCount++;
+                    if (item.status === "Active") targetCategoryData.activeCount++; else targetCategoryData.inactiveCount++;
+                    const itemPrice = parseFloat(item.price);
+                    if (!isNaN(itemPrice) && itemPrice > 0) {
+                        targetCategoryData.totalPrice += itemPrice;
+                        targetCategoryData.pricedItemCount++;
+                    }
+                }
+            });
+
+            html += `<table>
+                        <tr>
+                            <th>Category / Sub-Category</th>
+                            <th>Total Items</th>
+                            <th>Active Items</th>
+                            <th>Inactive Items</th>
+                            <th>Avg Price</th>
+                        </tr>`;
+            categoryMap.forEach((data, catId) => {
+                // If it's a main category that also has subcategories, its item count might be doubled from above.
+                // For simplicity here, we're counting total items *in* a category (including direct items and items in its direct subcategories).
+                const avgPrice = data.pricedItemCount > 0 ? (data.totalPrice / data.pricedItemCount).toFixed(2) : 'N/A';
+                html += `<tr>
+                            <td>${escapeCsv(data.name)}</td>
+                            <td>${data.itemCount}</td>
+                            <td>${data.activeCount}</td>
+                            <td>${data.inactiveCount}</td>
+                            <td>${avgPrice !== 'N/A' ? avgPrice : avgPrice}</td>
+                        </tr>`;
+                // Add subcategories under their parents
+                categories.find(c => c.categoryId === catId)?.subCategories?.forEach(sub => {
+                    const subCatData = subCategoryMap.get(sub.subCategoryId);
+                    // Rista doesn't store subcategory item counts directly in the JSON response
+                    // This count needs to be recalculated based on items with this subCategoryId
+                    let subCatItems = items.filter(item => item.subCategoryId === sub.subCategoryId);
+                    let subCatActive = subCatItems.filter(item => item.status === "Active").length;
+                    let subCatInactive = subCatItems.length - subCatActive;
+                    let subCatSumPrices = subCatItems.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
+                    let subCatPricedCount = subCatItems.filter(item => !isNaN(parseFloat(item.price)) && parseFloat(item.price) > 0).length;
+                    let subCatAvgPrice = subCatPricedCount > 0 ? (subCatSumPrices / subCatPricedCount).toFixed(2) : 'N/A';
+
+                    html += `<tr>
+                                <td>&nbsp;&nbsp;&nbsp;&nbsp;↳ ${escapeCsv(sub.name)}</td>
+                                <td>${subCatItems.length}</td>
+                                <td>${subCatActive}</td>
+                                <td>${subCatInactive}</td>
+                                <td>${subCatAvgPrice !== 'N/A' ? subCatAvgPrice : subCatAvgPrice}</td>
+                            </tr>`;
+                });
+            });
+            html += `</table>`;
+
+            // --- Item Completeness Details ---
+            html += `<h4>Item Completeness Details</h4>`;
+            let missingDetailsItems = items.filter(item => !item.description || item.description.trim() === '' || !item.imageURL || item.imageURL.trim() === '');
+            if (missingDetailsItems.length > 0) {
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category</th>
+                                <th>Missing Description</th>
+                                <th>Missing Image</th>
+                            </tr>`;
+                missingDetailsItems.forEach(item => {
+                    const categoryName = categoryMap.get(item.categoryId) || 'N/A';
+                    const subCategoryName = item.subCategoryId ? categoryMap.get(item.subCategoryId) : categoryName;
+                    const displayCat = subCategoryName !== categoryName ? `${categoryName} > ${subCategoryName}` : categoryName;
+                    const missingDesc = (!item.description || item.description.trim() === '') ? 'Yes' : 'No';
+                    const missingImage = (!item.imageURL || item.imageURL.trim() === '') ? 'Yes' : 'No';
+                    html += `<tr>
+                                <td>${escapeCsv(item.itemName)}</td>
+                                <td>${escapeCsv(displayCat)}</td>
+                                <td>${missingDesc}</td>
+                                <td>${missingImage}</td>
+                            </tr>`;
+                });
+                html += `</table>`;
+            } else {
+                html += `<p style="color: green;">All items have descriptions and images!</p>`;
+            }
+
+            // --- Add-on & Variant Analysis ---
+            html += `<h4>Add-on & Variant Analysis</h4>`;
+            html += `<p>Items with Add-ons/Variants: ${itemsWithAddonsVariants} (${itemsWithAddonsVariants > 0 ? (itemsWithAddonsVariants / totalItems * 100).toFixed(2) : 0}%)</p>`;
+            html += `<p>Total Options across all items (Options Sets): ${totalAddonsVariants}</p>`;
+            html += `<p>Average Options per Item (with options): ${itemsWithAddonsVariants > 0 ? (totalAddonsVariants / itemsWithAddonsVariants).toFixed(2) : 'N/A'}</p>`;
+
+            // Identify items with most options for complexity
+            let complexItems = items.map(item => {
+                let currentItemOptionsCount = 0;
+                if (item.optionSetIds && item.optionSetIds.length > 0) {
+                    item.optionSetIds.forEach(osId => {
+                        const optionSet = optionSets.find(os => os.optionSetId === osId);
+                        if (optionSet && optionSet.options) {
+                            currentItemOptionsCount += optionSet.options.length;
+                        }
+                    });
+                }
+                return {
+                    name: item.itemName,
+                    category: categoryMap.get(item.categoryId) || 'N/A',
+                    subCategory: item.subCategoryId ? categoryMap.get(item.subCategoryId) : '',
+                    totalOptions: currentItemOptionsCount
+                };
+            }).sort((a, b) => b.totalOptions - a.totalOptions); // Sort descending by total options
+
+            if (complexItems.filter(i => i.totalOptions > 0).length > 0) {
+                html += `<h4>Top 5 Most Configurable Items:</h4>`;
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category / Sub-Category</th>
+                                <th>Total Options</th>
+                            </tr>`;
+                complexItems.slice(0, 5).forEach(item => { // Show top 5
+                    if (item.totalOptions > 0) {
+                        const displayCat = item.subCategory ? `${escapeCsv(item.category)} > ${escapeCsv(item.subCategory)}` : escapeCsv(item.category);
+                        html += `<tr>
+                                    <td>${escapeCsv(item.name)}</td>
+                                    <td>${displayCat}</td>
+                                    <td>${item.totalOptions}</td>
+                                </tr>`;
+                    }
+                });
+                html += `</table>`;
+            } else {
+                html += `<p>No items with configurable options found.</p>`;
+            }
+
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadRistaCsv() {
+            const responseData = getRistaResponseData();
+            if (!responseData || !responseData.categories || !responseData.items) {
+                outputDiv.innerHTML = '<p style="color: red;">Invalid Rista JSON structure: Missing response data for CSV.</p>';
+                return;
+            }
+
+            const categories = getRistaCategories(responseData);
+            const items = getRistaItems(responseData);
+            const itemTags = getRistaItemTags(responseData);
+            const optionSets = getRistaOptionSets(responseData);
+
+            if (!items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No items found in Rista data to export.</p>';
+                return;
+            }
+
+            const categoryMap = new Map();
+            categories.forEach(cat => {
+                categoryMap.set(cat.categoryId, cat.name);
+                if (cat.subCategories) {
+                    cat.subCategories.forEach(subCat => {
+                        categoryMap.set(subCat.subCategoryId, subCat.name);
+                    });
+                }
+            });
+            const itemTagMap = new Map();
+            itemTags.forEach(tag => { itemTagMap.set(tag.itemTagId, tag.name); });
+            const optionSetMap = new Map();
+            optionSets.forEach(os => { optionSetMap.set(os.optionSetId, os); });
+
+            const rows = [
+                ["Item Name", "Item ID", "SKU ID", "Description", "Status", "Category Name", "Sub-Category Name", "Item Tags", "Image URL",
+                 "Option Set ID", "Option Set Display Name", "Option Set Min", "Option Set Max",
+                 "Option ID", "Option Item ID", "Option Name", "Option Price"]
+            ];
+
+            items.forEach(item => {
+                const categoryName = categoryMap.get(item.categoryId) || 'N/A';
+                const subCategoryName = item.subCategoryId ? categoryMap.get(item.subCategoryId) : categoryName;
+                const tags = (item.itemTagIds || []).map(tagId => itemTagMap.get(tagId) || '').filter(name => name !== '').join('; ');
+
+                rows.push([
+                    escapeCsv(item.itemName), escapeCsv(item.itemId), escapeCsv(item.skuCode), escapeCsv(item.description),
+                    escapeCsv(item.status), escapeCsv(categoryName), escapeCsv(subCategoryName), escapeCsv(tags), escapeCsv(item.imageURL),
+                    '', '', '', '', // Empty for Option Set
+                    '', '', '', ''   // Empty for Option
+                ]);
+
+                if (item.optionSetIds && item.optionSetIds.length > 0) {
+                    item.optionSetIds.forEach(osId => {
+                        const optionSet = optionSetMap.get(osId);
+                        if (optionSet) {
+                            rows.push([
+                                escapeCsv(item.itemName), escapeCsv(item.itemId), '', '', '', '', '', '', '',
+                                escapeCsv(optionSet.optionSetId), escapeCsv(optionSet.displayName), escapeCsv(optionSet.min), escapeCsv(optionSet.max),
+                                '', '', '', ''
+                            ]);
+
+                            if (optionSet.options && optionSet.options.length > 0) {
+                                optionSet.options.forEach(option => {
+                                    rows.push([
+                                        escapeCsv(item.itemName), escapeCsv(item.itemId), '', '', '', '', '', '', '',
+                                        escapeCsv(optionSet.optionSetId), escapeCsv(optionSet.displayName), escapeCsv(optionSet.min), escapeCsv(optionSet.max),
+                                        escapeCsv(option.optionId), escapeCsv(option.itemId), escapeCsv(option.optionName), escapeCsv(option.price)
+                                    ]);
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'rista_menu_export.csv');
+        }
+
+        // --- Urban Piper Format Handlers ---
+        function getUrbanPiperCategories() {
+            return jsonData && jsonData.data && jsonData.data.menu && Array.isArray(jsonData.data.menu.categories) ? jsonData.data.menu.categories :
+                   jsonData && jsonData.menu && Array.isArray(jsonData.menu.categories) ? jsonData.menu.categories : [];
+        }
+
+        function showUrbanPiperCategoryStats() {
+            const categories = getUrbanPiperCategories();
+            const items = (jsonData.data && jsonData.data.menu && jsonData.data.menu.items) || (jsonData.menu && jsonData.menu.items) || [];
+            const addOnGroups = (jsonData.data && jsonData.data.menu && jsonData.data.menu.add_on_groups) || (jsonData.menu && jsonData.menu.add_on_groups) || 
+                               (jsonData.data && jsonData.data.menu && jsonData.data.menu.addOnGroups) || (jsonData.menu && jsonData.menu.addOnGroups) || [];
+
+            if (!categories.length && !items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No categories or items found in Urban Piper data to generate insights.</p>';
+                return;
+            }
+
+            let html = `<h3>Menu Insights (Urban Piper)</h3>`;
+
+            // --- Overall Summary ---
+            let totalItems = items.length;
+            let activeItems = items.filter(item => item.in_stock === true).length; // Assuming 'in_stock: true' means active
+            let inactiveItems = totalItems - activeItems;
+            let itemsMissingDesc = items.filter(item => !item.description || item.description.trim() === '').length;
+            let itemsMissingImage = items.filter(item => !item.image_url || item.image_url.trim() === '').length;
+            let totalAddons = 0;
+            let itemsWithAddons = 0;
+            let sumPrices = 0;
+            let pricedItemsCount = 0;
+            
+            // Map add-on groups for easy lookup
+            const addonGroupMap = new Map();
+            addOnGroups.forEach(group => {
+                addonGroupMap.set(group.id, group);
+            });
+
+            items.forEach(item => {
+                const itemPrice = parseFloat(item.price);
+                if (!isNaN(itemPrice) && itemPrice > 0) {
+                    sumPrices += itemPrice;
+                    pricedItemsCount++;
+                }
+
+                const itemAddonGroups = item.add_on_groups || item.addOnGroups || [];
+                if (itemAddonGroups.length > 0) {
+                    itemsWithAddons++;
+                    itemAddonGroups.forEach(groupRef => {
+                        const groupDetails = addonGroupMap.get(groupRef.id);
+                        if (groupDetails && groupDetails.addons) {
+                            totalAddons += groupDetails.addons.length;
+                        }
+                    });
+                }
+            });
+
+            html += `<div class="summary-box">
+                        Overall Menu Summary: <br>
+                        <span>Total Items: ${totalItems}</span> |
+                        <span>Active: ${activeItems}</span> |
+                        <span>Inactive: ${inactiveItems}</span> |
+                        <span>Missing Description: ${itemsMissingDesc}</span> |
+                        <span>Missing Image: ${itemsMissingImage}</span> |
+                        <span>Average Item Price: ${pricedItemsCount > 0 ? (sumPrices / pricedItemsCount).toFixed(2) : 'N/A'}</span>
+                    </div>`;
+
+            // --- Category Performance ---
+            html += `<h4>Category Performance Overview</h4>`;
+            const categoryMap = new Map(); // Category title -> {itemCount, activeCount, inactiveCount, totalPrice, pricedItemCount}
+            const subCategoryMap = new Map(); // SubCategory title -> {parentCategoryTitle, itemCount, activeCount, inactiveCount, totalPrice, pricedItemCount}
+
+            categories.forEach(cat => {
+                const catTitle = cat.title || 'Unknown Category';
+                if (!categoryMap.has(catTitle)) {
+                    categoryMap.set(catTitle, {
+                        name: catTitle,
+                        itemCount: 0,
+                        activeCount: 0,
+                        inactiveCount: 0,
+                        totalPrice: 0,
+                        pricedItemCount: 0
+                    });
+                }
+
+                // Process items directly under category
+                if (Array.isArray(cat.items)) {
+                    cat.items.forEach(item => {
+                        const catData = categoryMap.get(catTitle);
+                        catData.itemCount++;
+                        if (item.in_stock === true) catData.activeCount++; else catData.inactiveCount++;
+                        const itemPrice = parseFloat(item.price);
+                        if (!isNaN(itemPrice) && itemPrice > 0) {
+                            catData.totalPrice += itemPrice;
+                            catData.pricedItemCount++;
+                        }
+                    });
+                }
+
+                // Process subcategories and their items
+                if (Array.isArray(cat.subcategories)) {
+                    cat.subcategories.forEach(sub => {
+                        const subTitle = sub.title || catTitle; // If sub.title is missing, use category title as subcategory name
+                        const fullPath = `${catTitle} > ${subTitle}`;
+                        if (!subCategoryMap.has(fullPath)) {
+                            subCategoryMap.set(fullPath, {
+                                name: subTitle,
+                                parentName: catTitle,
+                                itemCount: 0,
+                                activeCount: 0,
+                                inactiveCount: 0,
+                                totalPrice: 0,
+                                pricedItemCount: 0
+                            });
+                        }
+                        if (Array.isArray(sub.items)) {
+                            sub.items.forEach(item => {
+                                const subCatData = subCategoryMap.get(fullPath);
+                                subCatData.itemCount++;
+                                if (item.in_stock === true) subCatData.activeCount++; else subCatData.inactiveCount++;
+                                const itemPrice = parseFloat(item.price);
+                                if (!isNaN(itemPrice) && itemPrice > 0) {
+                                    subCatData.totalPrice += itemPrice;
+                                    subCatData.pricedItemCount++;
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+
+            html += `<table>
+                        <tr>
+                            <th>Category / Sub-Category</th>
+                            <th>Total Items</th>
+                            <th>Active Items</th>
+                            <th>Inactive Items</th>
+                            <th>Avg Price</th>
+                        </tr>`;
+            
+            // Display main categories
+            categoryMap.forEach((data) => {
+                const avgPrice = data.pricedItemCount > 0 ? (data.totalPrice / data.pricedItemCount).toFixed(2) : 'N/A';
+                html += `<tr>
+                            <td>${escapeCsv(data.name)}</td>
+                            <td>${data.itemCount}</td>
+                            <td>${data.activeCount}</td>
+                            <td>${data.inactiveCount}</td>
+                            <td>${avgPrice !== 'N/A' ? avgPrice : avgPrice}</td>
+                        </tr>`;
+            });
+
+            // Display subcategories
+            subCategoryMap.forEach((data) => {
+                const avgPrice = data.pricedItemCount > 0 ? (data.totalPrice / data.pricedItemCount).toFixed(2) : 'N/A';
+                html += `<tr>
+                            <td>&nbsp;&nbsp;&nbsp;&nbsp;↳ ${escapeCsv(data.name)} (under ${escapeCsv(data.parentName)})</td>
+                            <td>${data.itemCount}</td>
+                            <td>${data.activeCount}</td>
+                            <td>${data.inactiveCount}</td>
+                            <td>${avgPrice !== 'N/A' ? avgPrice : avgPrice}</td>
+                        </tr>`;
+            });
+            html += `</table>`;
+
+            // --- Item Completeness Details ---
+            html += `<h4>Item Completeness Details</h4>`;
+            let missingDetailsItems = items.filter(item => !item.description || item.description.trim() === '' || !item.image_url || item.image_url.trim() === '');
+            if (missingDetailsItems.length > 0) {
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category / Sub-Category</th>
+                                <th>Missing Description</th>
+                                <th>Missing Image</th>
+                            </tr>`;
+                missingDetailsItems.forEach(item => {
+                    let itemCategory = '';
+                    categories.forEach(cat => {
+                        if (Array.isArray(cat.items) && cat.items.some(i => i.ref_id === item.ref_id)) {
+                            itemCategory = cat.title;
+                        }
+                        if (Array.isArray(cat.subcategories)) {
+                            cat.subcategories.forEach(sub => {
+                                if (Array.isArray(sub.items) && sub.items.some(i => i.ref_id === item.ref_id)) {
+                                    itemCategory = `${cat.title} > ${sub.title || cat.title}`;
+                                }
+                            });
+                        }
+                    });
+                    const missingDesc = (!item.description || item.description.trim() === '') ? 'Yes' : 'No';
+                    const missingImage = (!item.image_url || item.image_url.trim() === '') ? 'Yes' : 'No';
+                    html += `<tr>
+                                <td>${escapeCsv(item.title)}</td>
+                                <td>${escapeCsv(itemCategory)}</td>
+                                <td>${missingDesc}</td>
+                                <td>${missingImage}</td>
+                            </tr>`;
+                });
+                html += `</table>`;
+            } else {
+                html += `<p style="color: green;">All items have descriptions and images!</p>`;
+            }
+
+            // --- Add-on & Variant Analysis ---
+            html += `<h4>Add-on & Variant Analysis</h4>`;
+            html += `<p>Items with Add-ons: ${itemsWithAddons} (${itemsWithAddons > 0 ? (itemsWithAddons / totalItems * 100).toFixed(2) : 0}%)</p>`;
+            html += `<p>Total Add-ons across all items: ${totalAddons}</p>`;
+            html += `<p>Average Add-ons per Item (with add-ons): ${itemsWithAddons > 0 ? (totalAddons / itemsWithAddons).toFixed(2) : 'N/A'}</p>`;
+
+            // Identify items with most add-ons for complexity
+            let complexItems = items.map(item => {
+                let currentItemAddonsCount = 0;
+                const itemAddonGroups = item.add_on_groups || item.addOnGroups || [];
+                itemAddonGroups.forEach(groupRef => {
+                    const groupDetails = addonGroupMap.get(groupRef.id);
+                    if (groupDetails && groupDetails.addons) {
+                        currentItemAddonsCount += groupDetails.addons.length;
+                    }
+                });
+                let itemCategory = '';
+                categories.forEach(cat => {
+                    if (Array.isArray(cat.items) && cat.items.some(i => i.ref_id === item.ref_id)) {
+                        itemCategory = cat.title;
+                    }
+                    if (Array.isArray(cat.subcategories)) {
+                        cat.subcategories.forEach(sub => {
+                            if (Array.isArray(sub.items) && sub.items.some(i => i.ref_id === item.ref_id)) {
+                                itemCategory = `${cat.title} > ${sub.title || cat.title}`;
+                            }
+                        });
+                    }
+                });
+
+                return {
+                    name: item.title,
+                    category: itemCategory,
+                    addonCount: currentItemAddonsCount,
+                };
+            }).sort((a, b) => b.addonCount - a.addonCount); // Sort descending by total options
+
+            if (complexItems.filter(i => i.addonCount > 0).length > 0) {
+                html += `<h4>Top 5 Most Configurable Items:</h4>`;
+                html += `<table>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Category / Sub-Category</th>
+                                <th>Add-ons</th>
+                            </tr>`;
+                complexItems.slice(0, 5).forEach(item => { // Show top 5
+                    if (item.addonCount > 0) {
+                        html += `<tr>
+                                    <td>${escapeCsv(item.name)}</td>
+                                    <td>${escapeCsv(item.category)}</td>
+                                    <td>${item.addonCount}</td>
+                                </tr>`;
+                    }
+                });
+                html += `</table>`;
+            } else {
+                html += `<p>No items with configurable add-ons found.</p>`;
+            }
+
+            outputDiv.innerHTML = html;
+        }
+
+        function downloadUrbanPiperCsv() {
+            const categories = getUrbanPiperCategories();
+            const items = (jsonData.data && jsonData.data.menu && jsonData.data.menu.items) || (jsonData.menu && jsonData.menu.items) || [];
+            const addOnGroups = (jsonData.data && jsonData.data.menu && jsonData.data.menu.add_on_groups) || (jsonData.menu && jsonData.menu.add_on_groups) || 
+                               (jsonData.data && jsonData.data.menu && jsonData.data.menu.addOnGroups) || (jsonData.menu && jsonData.menu.addOnGroups) || [];
+
+            if (!items.length) {
+                outputDiv.innerHTML = '<p style="color: orange;">No items found in Urban Piper data to export.</p>';
+                return;
+            }
+
+            const rows = [
+                ["Item Title", "Item Ref ID", "Item Price", "Item In Stock", "Item Description", "Item Image URL",
+                 "Subcategory Title", "Category Title", "Addon Group Title", "Addon Title", "Addon Price", "Addon In Stock"]
+            ];
+
+            const addonGroupMap = new Map();
+            addOnGroups.forEach(group => {
+                addonGroupMap.set(group.id, group); // Use group.id for mapping
+            });
+
+            const processUrbanPiperItem = (item, subcatTitle, catTitle) => {
+                const base = [
+                    escapeCsv(item.title || ''),
+                    escapeCsv(item.ref_id || ''),
+                    escapeCsv(item.price || ''),
+                    escapeCsv(item.in_stock || ''),
+                    escapeCsv(item.description || ''),
+                    escapeCsv(item.image_url || ''),
+                    escapeCsv(subcatTitle),
+                    escapeCsv(catTitle)
+                ];
+
+                const itemAddonGroups = item.add_on_groups || item.addOnGroups || []; // Check both keys
+
+                if (Array.isArray(itemAddonGroups) && itemAddonGroups.length > 0) {
+                    itemAddonGroups.forEach(groupRef => {
+                        const groupDetails = addonGroupMap.get(groupRef.id); // Use groupRef.id
+                        if (groupDetails && Array.isArray(groupDetails.addons)) {
+                            groupDetails.addons.forEach(addon => {
+                                rows.push([
+                                    ...base,
+                                    escapeCsv(groupDetails.title || ''), // Use addonGroup title
+                                    escapeCsv(addon.title || ''),
+                                    escapeCsv(addon.price || ''),
+                                    escapeCsv(addon.in_stock || '')
+                                ]);
+                            });
+                        }
+                    });
+                } else {
+                    rows.push([...base, '', '', '', '']); // No addons, push empty addon fields
+                }
+            };
+
+            categories.forEach(cat => {
+                const catTitle = cat.title || '';
+
+                if (Array.isArray(cat.subcategories) && cat.subcategories.length > 0) {
+                    cat.subcategories.forEach(sub => {
+                        const subTitle = sub.title || catTitle;
+                        if (Array.isArray(sub.items)) {
+                            sub.items.forEach(item => processUrbanPiperItem(item, subTitle, catTitle));
+                        }
+                    });
+                }
+                
+                if (Array.isArray(cat.items)) {
+                    cat.items.forEach(item => processUrbanPiperItem(item, catTitle, catTitle));
+                }
+            });
+
+            if (rows.length === 1) {
+                outputDiv.innerHTML = '<p style="color: orange;">No items found in Urban Piper data to export.</p>';
+                return;
+            }
+
+            downloadCsvFile(rows.map(row => row.join(',')).join('\n'), 'urbanpiper_menu_export.csv');
+        }
+
+
+        // --- Universal Button Handlers ---
+        function handleShowCategoryStats() {
+            if (!jsonData) {
+                outputDiv.innerHTML = '<p style="color: red;">Please upload a file first!</p>';
+                return;
+            }
+            if (!detectedFormat) {
+                outputDiv.innerHTML = '<p style="color: red;">Could not determine JSON format. Cannot show insights.</p>';
+                return;
+            }
+
+            outputDiv.innerHTML = 'Generating insights... <span class="loader"></span>'; // Provide feedback before rendering table
+            // Use setTimeout to allow the loader to show before heavy processing
+            setTimeout(() => {
+                switch (detectedFormat) {
+                    case 'petpooja': showPetpoojaCategoryStats(); break;
+                    case 'rista': showRistaCategoryStats(); break;
+                    case 'urbanpiper': showUrbanPiperCategoryStats(); break;
+                    default: outputDiv.innerHTML = '<p style="color: red;">Unsupported JSON format for insights.</p>';
+                }
+            }, 50); // Small delay to let UI update
+        }
+
+        function handleDownloadCSV() {
+            if (!jsonData) {
+                outputDiv.innerHTML = '<p style="color: red;">Please upload a file first!</p>';
+                return;
+            }
+            if (!detectedFormat) {
+                outputDiv.innerHTML = '<p style="color: red;">Could not determine JSON format. Cannot download CSV.</p>';
+                return;
+            }
+
+            outputDiv.innerHTML = 'Converting to CSV... <span class="loader"></span>'; // Provide feedback before download
+            setTimeout(() => {
+                switch (detectedFormat) {
+                    case 'petpooja': downloadPetpoojaCsv(); break;
+                    case 'rista': downloadRistaCsv(); break;
+                    case 'urbanpiper': downloadUrbanPiperCsv(); break;
+                    default: outputDiv.innerHTML = '<p style="color: red;">Unsupported JSON format for CSV conversion.</p>';
+                }
+            }, 50); // Small delay to let UI update
+        }
+
+        function handlePrettyPrintJson() {
+            if (!jsonData) {
+                outputDiv.innerHTML = '<p style="color: red;">Please upload a file first!</p>';
+                return;
+            }
+            outputDiv.innerHTML = 'Formatting JSON... <span class="loader"></span>';
+            setTimeout(() => {
+                try {
+                    outputDiv.innerHTML = '<h3>Raw JSON Content (Pretty Print)</h3><pre>' + JSON.stringify(jsonData, null, 2) + '</pre>';
+                } catch (e) {
+                    outputDiv.innerHTML = '<p style="color: red;">Error formatting JSON: ' + e.message + '</p>';
+                }
+            }, 50);
+        }
+
+        function removeFile() {
+            jsonData = null;
+            detectedFormat = null;
+            dropZone.innerText = 'Drop or browse JSON file here';
+            fileInput.value = null; // Clear the file input
+            outputDiv.innerHTML = ''; // Clear the output section
+        }
+    </script>
+</body>
+</html>

@@ -290,6 +290,7 @@ with tab2:
                 st.session_state.selected_buyers = buyer_apps_all.copy()
             if clear_all_buyers:
                 st.session_state.selected_buyers = []
+                valid_selected_buyers = [b for b in st.session_state.selected_buyers if b in buyer_apps_all]
             selected_buyer_apps = st.multiselect(
                 "Choose Buyer Apps:",
                 buyer_apps_all,
@@ -306,6 +307,7 @@ with tab2:
                 st.session_state.selected_cities = city_codes_all.copy()
             if clear_all_cities:
                 st.session_state.selected_cities = []
+                valid_selected_cities = [c for c in st.session_state.selected_cities if c in city_codes_all]
             selected_city_codes = st.multiselect(
                 "Choose City Codes:",
                 city_codes_all,

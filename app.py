@@ -372,9 +372,10 @@ with tab4:
         st.dataframe(df_c)
         st.download_button("📥 Download City Code Data", data=df_c.to_csv(index=False),
                            file_name=f"{sel_city}_{data_type.replace(' ', '_')}.csv", mime='text/csv')
+        
 
 with tab5:
-    st.subheader("Store Coverage: Active vs Sent (by Buyer App and Date)")
+    st.subheader("Store Coverage: Active Stores NOT Sent to Buyer Apps")
 
     store_file = st.file_uploader("📤 Upload Store Master File", type=["xlsx"], key="store_master_upload")
     if store_file:
@@ -391,34 +392,54 @@ with tab5:
             st.info(f"Last uploaded: {uploaded_at.strftime('%d-%B %Y %I:%M %p')}")
 
     if not store_df.empty:
-        # Get all active stores
+        # Filter active stores only
         active_stores = store_df[store_df['status'].str.lower().isin(ACTIVE_STATUSES)]
         active_pids = set(active_stores['provider_id'].astype(str).str.strip())
-        
-        # Calculate coverage for ALL buyer apps
+
+        # Gather buyer apps from latest data
         buyer_apps_all = sorted(df_latest['Buyer App'].dropna().unique())
         coverage_data = []
-        
+
         for buyer_app in buyer_apps_all:
             buyer_df = df_latest[df_latest['Buyer App'] == buyer_app]
             sent_pids_buyer = set(buyer_df['Provider ID'].dropna().astype(str).str.strip())
-            
-            sent_count = len(active_pids & sent_pids_buyer)
+
             not_sent_count = len(active_pids - sent_pids_buyer)
-            
-            coverage_data.append({
-                "Buyer App": buyer_app,
-                "Sent to ONDC": sent_count,
-                "Active but not Sent": not_sent_count
-            })
-        
-        # Create bar chart for all buyer apps
-        coverage_df = pd.DataFrame(coverage_data)
-        fig = px.bar(coverage_df, x='Buyer App', y=['Sent to ONDC', 'Active but not Sent'], 
-                    title="Active Stores Coverage by Buyer App", barmode='group')
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Filters for table data only
+            if not_sent_count > 0:
+                coverage_data.append({
+                    "Buyer App": buyer_app,
+                    "Active but not Sent": not_sent_count
+                })
+
+        if coverage_data:
+            coverage_df = pd.DataFrame(coverage_data)
+            # Sort descending by 'Active but not Sent'
+            coverage_df = coverage_df.sort_values(by='Active but not Sent', ascending=False)
+
+            # Create bar chart with value labels
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                x=coverage_df['Buyer App'],
+                y=coverage_df['Active but not Sent'],
+                text=coverage_df['Active but not Sent'],
+                textposition='auto',
+                marker_color='indianred'
+            ))
+
+            fig.update_layout(
+                title="Active Stores NOT Sent to Buyer Apps",
+                xaxis_title="Buyer App",
+                yaxis_title="Count of Active Stores NOT Sent",
+                template='plotly_white',
+                yaxis=dict(tick0=0, dtick=1)
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("✅ All active stores have been sent to all buyer apps — no missing data to display.")
+
+        # Table and filters for missing stores
         st.subheader("Not Sent Stores Table (Filtered)")
         buyer_apps_tab5 = sorted(df_latest['Buyer App'].dropna().unique())
         selected_buyer_tab5 = st.selectbox("Select Buyer App:", buyer_apps_tab5, key="tab5_buyer")
@@ -442,3 +463,4 @@ with tab5:
             file_name=f"active_not_sent_to_ondc_{selected_buyer_tab5}_{selected_date_tab5}.csv",
             mime="text/csv"
         )
+

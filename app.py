@@ -6,7 +6,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # ---------------------------------------------
-# 🔐 Supabase Config (set via secrets.toml)
+# 🔐 Supabase Config
 # ---------------------------------------------
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
@@ -170,7 +170,7 @@ def load_from_supabase():
 # 🧭 UI Setup
 # ---------------------------------------------
 st.set_page_config(page_title="Search Data Analysis Dashboard", layout="wide")
-st.title("🔍 Search Data Analysis Dashboard")
+st.title("Search Data Analysis Dashboard")
 
 source_option = st.sidebar.radio("📦 Data Source", ["Upload Excel", "Load from Supabase"])
 

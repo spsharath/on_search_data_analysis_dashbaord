@@ -378,6 +378,7 @@ with tab4:
 with tab5:
     st.subheader("Store Coverage: Active Stores NOT Sent to Buyer Apps")
 
+    # Upload or Load Store Master
     store_file = st.file_uploader("📤 Upload Store Master File", type=["xlsx"], key="store_master_upload")
     if store_file:
         uploaded_at = upload_store_master(store_file)
@@ -393,18 +394,23 @@ with tab5:
             st.info(f"Last uploaded: {uploaded_at.strftime('%d-%B %Y %I:%M %p')}")
 
     if not store_df.empty:
-        # Filter active stores only
+        # Filter active stores
         active_stores = store_df[store_df['status'].str.lower().isin(ACTIVE_STATUSES)]
         active_pids = set(active_stores['provider_id'].astype(str).str.strip())
 
-        # Gather buyer apps from latest data
-        buyer_apps_all = sorted(df_latest['Buyer App'].dropna().unique())
+        # Allow user to pick a date (used for both graph and table)
+        available_dates_tab5 = sorted(df_latest['Date'].dropna().unique())
+        selected_date_tab5 = st.selectbox("📅 Select Date for Coverage Analysis:", available_dates_tab5, key="tab5_date")
+
+        df_selected_date = df_latest[df_latest['Date'] == selected_date_tab5]
+
+        # Buyer App Coverage Graph (for selected date only)
+        buyer_apps_all = sorted(df_selected_date['Buyer App'].dropna().unique())
         coverage_data = []
 
         for buyer_app in buyer_apps_all:
-            buyer_df = df_latest[df_latest['Buyer App'] == buyer_app]
+            buyer_df = df_selected_date[df_selected_date['Buyer App'] == buyer_app]
             sent_pids_buyer = set(buyer_df['Provider ID'].dropna().astype(str).str.strip())
-
             not_sent_count = len(active_pids - sent_pids_buyer)
             if not_sent_count > 0:
                 coverage_data.append({
@@ -414,12 +420,9 @@ with tab5:
 
         if coverage_data:
             coverage_df = pd.DataFrame(coverage_data)
-            # Sort descending by 'Active but not Sent'
             coverage_df = coverage_df.sort_values(by='Active but not Sent', ascending=False)
 
-            # Create bar chart with value labels
             fig = go.Figure()
-
             fig.add_trace(go.Bar(
                 x=coverage_df['Buyer App'],
                 y=coverage_df['Active but not Sent'],
@@ -427,29 +430,23 @@ with tab5:
                 textposition='auto',
                 marker_color='indianred'
             ))
-
             fig.update_layout(
-                title="Active Stores NOT Sent to Buyer Apps",
+                title=f"Active Stores NOT Sent to Buyer Apps (on {selected_date_tab5})",
                 xaxis_title="Buyer App",
                 yaxis_title="Count of Active Stores NOT Sent",
                 template='plotly_white',
                 yaxis=dict(tick0=0, dtick=1)
             )
-
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("✅ All active stores have been sent to all buyer apps — no missing data to display.")
+            st.success("✅ All active stores have been sent to all buyer apps for the selected date.")
 
-        # Table and filters for missing stores
+        # Filtered Table
         st.subheader("Not Sent Stores Table (Filtered)")
-        buyer_apps_tab5 = sorted(df_latest['Buyer App'].dropna().unique())
-        selected_buyer_tab5 = st.selectbox("Select Buyer App:", buyer_apps_tab5, key="tab5_buyer")
-        available_dates_tab5 = sorted(df_latest['Date'].dropna().unique())
-        selected_date_tab5 = st.selectbox("Select Date:", available_dates_tab5, key="tab5_date")
+        selected_buyer_tab5 = st.selectbox("Select Buyer App:", buyer_apps_all, key="tab5_buyer")
 
-        filtered_df = df_latest[
-            (df_latest['Buyer App'] == selected_buyer_tab5) &
-            (df_latest['Date'] == selected_date_tab5)
+        filtered_df = df_selected_date[
+            df_selected_date['Buyer App'] == selected_buyer_tab5
         ]
 
         sent_pids_filtered = set(filtered_df['Provider ID'].dropna().astype(str).str.strip())

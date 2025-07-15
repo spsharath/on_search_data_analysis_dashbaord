@@ -15,7 +15,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 ACTIVE_STATUSES = ["mapped", "on_ondc", "temp_closed"]
 
 # ---------------------------------------------
-# 🔁 Upload & Load Data
+# Upload & Load Data
 # ---------------------------------------------
 def load_data(file):
     df = pd.read_excel(file)
@@ -35,7 +35,7 @@ def load_data(file):
     return df
 
 # ---------------------------------------------
-# 💾 Upload to Supabase with Deduplication & 7-day Cleanup
+# Upload to Supabase with Deduplication & 7-day Cleanup
 # ---------------------------------------------
 def upload_to_supabase(df):
     # Delete records older than 7 days
@@ -167,7 +167,7 @@ def load_from_supabase():
     return df
 
 # ---------------------------------------------
-# 🧭 UI Setup
+# UI Setup
 # ---------------------------------------------
 st.set_page_config(page_title="Search Data Analysis Dashboard", layout="wide")
 st.title("Search Data Analysis Dashboard")
@@ -214,7 +214,7 @@ data_type = st.sidebar.radio(
 df_to_use = df_latest if data_type == "Unique Data" else df
 
 # ---------------------------------------------
-# 📊 Helper: Prepare Comparison Data
+# Helper: Prepare Comparison Data
 # ---------------------------------------------
 def prepare_comparison(df, group_by):
     df_yesterday = df[df['Date'] == yesterday]
@@ -232,7 +232,7 @@ def prepare_comparison(df, group_by):
     return counts
 
 # ---------------------------------------------
-# 📊 Dashboard Tabs
+# Dashboard Tabs
 # ---------------------------------------------
 
 buyer_apps_all = sorted(df['Buyer App'].dropna().unique())
@@ -245,7 +245,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 with tab1:
-    st.subheader(f"📊 Buyer App Counts: {yesterday_str} vs {today_str}")
+    st.subheader(f"Buyer App Counts: {yesterday_str} vs {today_str}")
     st.markdown(f"**Data Mode:** {data_type}")
     buyer_counts = prepare_comparison(df_to_use, 'Buyer App')
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
@@ -272,9 +272,9 @@ with tab1:
             mime='text/csv')
 
 with tab2:
-    st.subheader("📅 All Days Summary with Filters")
+    st.subheader("All Days Summary with Filters")
 
-    with st.expander("🔍 Filter Options", expanded=True):
+    with st.expander("Filter Options", expanded=True):
         col1, col2 = st.columns([1, 1])
 
         if 'selected_buyers' not in st.session_state:
@@ -283,7 +283,7 @@ with tab2:
             st.session_state.selected_cities = city_codes_all.copy()
 
         with col1:
-            st.markdown("**🛍️ Buyer Apps**")
+            st.markdown("**Buyer Apps**")
             select_all_buyers = st.button("Select All Buyers")
             clear_all_buyers = st.button("Clear All Buyers")
             if select_all_buyers:
@@ -299,7 +299,7 @@ with tab2:
             st.session_state.selected_buyers = selected_buyer_apps
 
         with col2:
-            st.markdown("**🏙️ City Codes**")
+            st.markdown("**City Codes**")
             select_all_cities = st.button("Select All Cities")
             clear_all_cities = st.button("Clear All Cities")
             if select_all_cities:
@@ -331,7 +331,7 @@ with tab2:
 
 
 with tab3:
-    st.subheader("📊 prod.nirmitbap.ondc.org — With & Without std:01")
+    st.subheader("prod.nirmitbap.ondc.org — With & Without std:01")
     df_buyer = df_to_use[df_to_use['Buyer App'] == "prod.nirmitbap.ondc.org"]
 
     def count_std_filter(day, std01=True):
@@ -353,7 +353,7 @@ with tab3:
     st.plotly_chart(fig3, use_container_width=True)
 
 with tab4:
-    st.subheader("📋 Inspect & Download Data")
+    st.subheader("Inspect & Download Data")
     st.markdown(f"**Data Mode:** {data_type}")
     col1, col2 = st.columns(2)
 
@@ -372,7 +372,7 @@ with tab4:
                            file_name=f"{sel_city}_{data_type.replace(' ', '_')}.csv", mime='text/csv')
 
 with tab5:
-    st.subheader("🏬 Store Coverage: Active vs Sent (by Buyer App and Date)")
+    st.subheader("Store Coverage: Active vs Sent (by Buyer App and Date)")
 
     store_file = st.file_uploader("📤 Upload Store Master File", type=["xlsx"], key="store_master_upload")
     if store_file:
@@ -386,7 +386,7 @@ with tab5:
             st.stop()
         else:
             uploaded_at = store_df['uploaded_at'].max()
-            st.info(f"📅 Last uploaded: {uploaded_at.strftime('%d-%B %Y %I:%M %p')}")
+            st.info(f"Last uploaded: {uploaded_at.strftime('%d-%B %Y %I:%M %p')}")
 
     if not store_df.empty:
         # Get all active stores
@@ -417,7 +417,7 @@ with tab5:
         st.plotly_chart(fig, use_container_width=True)
         
         # Filters for table data only
-        st.subheader("📋 Not Sent Stores Table (Filtered)")
+        st.subheader("Not Sent Stores Table (Filtered)")
         buyer_apps_tab5 = sorted(df_latest['Buyer App'].dropna().unique())
         selected_buyer_tab5 = st.selectbox("Select Buyer App:", buyer_apps_tab5, key="tab5_buyer")
         available_dates_tab5 = sorted(df_latest['Date'].dropna().unique())

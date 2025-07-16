@@ -26,8 +26,10 @@ def load_data(file):
         df['Created At'], format="%d %b %Y %I:%M:%S %p", errors='coerce'
     )
 
-    # Extract Provider ID and Outlet Name Clean from Outlet Name string
-    df[['Provider ID', 'Outlet Name Clean']] = df['Outlet Name'].str.extract(r"(\d{4,5}:\d{4,5})\s*(.*)")
+    # Safer Provider ID extraction
+    df['Provider ID'] = df['Outlet Name'].str.extract(r"(\d{4,5}:\d{4,5})")[0]
+    df['Provider ID'] = df['Provider ID'].astype(str).str.strip()
+    df = df[df['Provider ID'].notna() & (df['Provider ID'] != 'nan')]
     
     # Create a Date column for easier filtering
     df['Date'] = df['Created At'].dt.date
@@ -343,7 +345,8 @@ with tab1:
                 (df['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
             ].copy()
             filtered['Provider ID'] = filtered['Provider ID'].astype(str).str.strip()
-            sent_pids = set(filtered['Provider ID'].dropna())
+            sent_pids = set(filtered['Provider ID'].dropna().astype(str).str.strip())
+            sent_pids = set(pid for pid in sent_pids if pid and pid != 'nan')
             missing_pids = active_pids - sent_pids
             missing_count = len(missing_pids)
             missing_counts.append({
@@ -524,6 +527,7 @@ with tab3:
             df_selected_date['Buyer App'].astype(str).str.strip() == selected_buyer_tab3_str
         ]
         sent_pids_filtered = set(filtered_df['Provider ID'].dropna().astype(str).str.strip())
+        sent_pids_filtered = set(pid for pid in sent_pids_filtered if pid and pid != 'nan')
         missing_pids = active_pids - sent_pids_filtered
         not_sent_df = active_stores[active_stores['provider_id'].astype(str).str.strip().isin(missing_pids)]
 

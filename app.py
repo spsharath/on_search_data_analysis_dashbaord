@@ -248,130 +248,42 @@ with tab1:
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.subheader("📥 Missing Stores Report")
-    buyer_apps = sorted(df_to_use['Buyer App'].dropna().unique())
-    selected_buyer = st.selectbox("Select Buyer App:", buyer_apps)
-    df_y = df_to_use[(df_to_use['Date'] == yesterday) & (df_to_use['Buyer App'] == selected_buyer)]
-    df_t = df_to_use[(df_to_use['Date'] == today) & (df_to_use['Buyer App'] == selected_buyer)]
-    df_y = df_y[['Outlet Name', 'Provider ID', 'City Code']].dropna()
-    df_t = df_t[['Outlet Name', 'Provider ID', 'City Code']].dropna()
-    missing = set(df_y.apply(tuple, axis=1)) - set(df_t.apply(tuple, axis=1))
-    if not missing:
-        st.success("✅ No missing stores. All records from yesterday are present today.")
-    else:
-        missing_df = pd.DataFrame(list(missing), columns=["Outlet Name", "Provider ID", "City Code"])
-        st.warning(f"⚠️ {len(missing_df)} missing stores")
-        st.dataframe(missing_df)
-        st.download_button(
-            "📤 Download Missing Report",
-            data=missing_df.to_csv(index=False),
-            file_name=f"{selected_buyer}_missing_{yesterday_str}_not_in_{today_str}.csv",
-            mime='text/csv')
+    # --- New Enhancement: Active Store Coverage vs Search Data ---
+    st.subheader("Active Stores in Store Master Missing from Search Data")
 
-    st.subheader("📥 Missing Stores Report (Store Master vs Store Data)")
-
-    # Load store master data (from DB)
+    # Load store master data
     store_master_df = load_store_master()
     active_statuses = ["mapped", "on_ondc", "temp_closed"]
     active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)].copy()
     active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip()
     active_stores = active_stores[active_stores['provider_id'].notna() & (active_stores['provider_id'] != 'nan')]
-    active_pids = set(active_stores['provider_id'])
 
-    # Prepare filters
-    available_dates = sorted(df['Date'].dropna().unique())
-    available_buyer_apps = sorted(df['Buyer App'].dropna().astype(str).str.strip().unique())
+    # All provider_ids present in search_data (anywhere)
+    search_provider_ids = set(df['Provider ID'].astype(str).str.strip().dropna())
 
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        select_all_dates = st.button("Select All Dates", key="msr_select_all_dates")
-        clear_all_dates = st.button("Clear All Dates", key="msr_clear_all_dates")
-        if 'msr_selected_dates' not in st.session_state:
-            st.session_state.msr_selected_dates = available_dates.copy()
-        if select_all_dates:
-            st.session_state.msr_selected_dates = available_dates.copy()
-        if clear_all_dates:
-            st.session_state.msr_selected_dates = []
-        selected_dates = st.multiselect(
-            "Choose Dates:",
-            available_dates,
-            default=st.session_state.msr_selected_dates,
-            key="msr_dates_multiselect"
-        )
-        st.session_state.msr_selected_dates = selected_dates
-    with col2:
-        select_all_buyers = st.button("Select All Buyer Apps", key="msr_select_all_buyers")
-        clear_all_buyers = st.button("Clear All Buyer Apps", key="msr_clear_all_buyers")
-        if 'msr_selected_buyers' not in st.session_state:
-            st.session_state.msr_selected_buyers = available_buyer_apps.copy()
-        if select_all_buyers:
-            st.session_state.msr_selected_buyers = available_buyer_apps.copy()
-        if clear_all_buyers:
-            st.session_state.msr_selected_buyers = []
-        selected_buyer_apps = st.multiselect(
-            "Choose Buyer Apps:",
-            available_buyer_apps,
-            default=st.session_state.msr_selected_buyers,
-            key="msr_buyers_multiselect"
-        )
-        st.session_state.msr_selected_buyers = selected_buyer_apps
+    # Find missing active provider_ids
+    missing_active_pids = set(active_stores['provider_id']) - search_provider_ids
+    missing_active_df = active_stores[active_stores['provider_id'].isin(missing_active_pids)]
 
-    # Prepare missing stores data
-    missing_counts = []
-    missing_rows = []
-    for date in selected_dates:
-        for buyer_app in selected_buyer_apps:
-            # If Provider ID column is missing in search data, treat all as missing
-            if 'Provider ID' not in df.columns:
-                sent_pids = set()
-            else:
-                filtered = df[
-                    (df['Date'] == date) &
-                    (df['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
-                ].copy()
-                filtered['Provider ID'] = filtered['Provider ID'].astype(str).str.strip()
-                filtered = filtered[filtered['Provider ID'].notna() & (filtered['Provider ID'] != 'nan')]
-                sent_pids = set(filtered['Provider ID'])
-            missing_pids = active_pids - sent_pids
-            missing_count = len(missing_pids)
-            missing_counts.append({
-                'Buyer App': buyer_app,
-                'Date': date,
-                'Missing Count': missing_count
-            })
-            for pid in missing_pids:
-                store_row = active_stores[active_stores['provider_id'] == pid].iloc[0]
-                missing_rows.append({
-                    'Date': date,
-                    'Buyer App': buyer_app,
-                    'Provider ID': pid,
-                    'Store Name': store_row['name'],
-                    'Status': store_row['status']
-                })
+    # Bar graph: Count of missing active stores (all missing, single bar)
+    st.plotly_chart(
+        px.bar(
+            x=["All Buyer Apps"],
+            y=[len(missing_active_df)],
+            labels={'x': 'Buyer App', 'y': 'Missing Active Stores'},
+            title="Count of Active Stores in Store Master Missing from Search Data"
+        ),
+        use_container_width=True
+    )
 
-    # Bar graph (descending order by missing count)
-    if missing_counts:
-        missing_counts_df = pd.DataFrame(missing_counts)
-        # Group by Buyer App (sum across selected dates)
-        bar_df = missing_counts_df.groupby('Buyer App')['Missing Count'].sum().reset_index()
-        bar_df = bar_df.sort_values('Missing Count', ascending=False)
-        fig = px.bar(bar_df, x='Buyer App', y='Missing Count', title="Missing Active Stores per Buyer App (sum across selected dates)")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No missing stores for the selected filters.")
-
-    # Table of missing stores
-    if missing_rows:
-        missing_stores_df = pd.DataFrame(missing_rows)
-        st.dataframe(missing_stores_df)
-        st.download_button(
-            "📥 Download Missing Stores Report",
-            data=missing_stores_df.to_csv(index=False),
-            file_name="missing_stores_report.csv",
-            mime='text/csv'
-        )
-    else:
-        st.info("No missing stores to report for the selected filters.")
+    # Table: List of missing provider_ids, names, statuses
+    st.dataframe(missing_active_df[['name', 'provider_id', 'status']])
+    st.download_button(
+        "📥 Download Missing Active Stores List",
+        data=missing_active_df[['name', 'provider_id', 'status']].to_csv(index=False),
+        file_name="missing_active_stores_vs_search_data.csv",
+        mime='text/csv'
+    )
 
 
 with tab2:

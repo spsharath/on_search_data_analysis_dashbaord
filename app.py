@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from supabase import create_client, Client
 import numpy as np
 from datetime import datetime, timedelta
+import re
 
 # ---------------------------------------------
 # 🔐 Supabase Config
@@ -262,6 +263,15 @@ with tab1:
     search_provider_ids = set(
         df['Provider ID'].astype(str).str.strip().str.lower().replace('nan', '').replace('', pd.NA).dropna()
     )
+
+    def normalize_pid(pid):
+        if pd.isna(pid):
+            return ''
+        # Remove all whitespace and non-visible characters, keep only digits and colon
+        return re.sub(r'[^0-9:]', '', str(pid)).lower().strip()
+
+    active_stores['provider_id'] = active_stores['provider_id'].apply(normalize_pid)
+    search_provider_ids = set(df['Provider ID'].apply(normalize_pid))
 
     # Find missing active provider_ids
     missing_active_pids = set(active_stores['provider_id']) - search_provider_ids

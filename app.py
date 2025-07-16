@@ -6,6 +6,7 @@ from supabase import create_client, Client
 import numpy as np
 from datetime import datetime, timedelta
 import re
+import io
 
 # ---------------------------------------------
 # 🔐 Supabase Config
@@ -248,7 +249,21 @@ with tab1:
     buyer_counts = prepare_comparison(df_to_use, 'Buyer App')
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
     st.plotly_chart(fig1, use_container_width=True)
-    # Removed Active Stores in Store Master Missing from Search Data section
+
+    # Show Store Unique Data as a table with Excel download if selected
+    if data_type == "Store Unique Data":
+        st.subheader("Store Unique Data Table (Live Pivot)")
+        st.dataframe(df_to_use)
+        # Excel download
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_to_use.to_excel(writer, index=False, sheet_name='StoreUniqueData')
+        st.download_button(
+            "📥 Download Store Unique Data as Excel",
+            data=output.getvalue(),
+            file_name="store_unique_data.xlsx",
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
 
 
 with tab2:

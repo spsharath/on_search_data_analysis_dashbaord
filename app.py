@@ -67,22 +67,22 @@ def upload_to_supabase(df):
 # ---------------------------------------------
 def upload_store_master(file):
     df = pd.read_excel(file)
-    df = df.rename(columns=lambda x: x.strip().lower())
+    df.columns = [col.strip() for col in df.columns]
 
-    if not {'name', 'status', 'provider id'}.issubset(set(df.columns)):
+    if not {'Name', 'Status', 'Provider ID'}.issubset(set(df.columns)):
         st.error("Store master file missing one of the required columns: 'Name', 'Status', 'Provider ID'")
         st.stop()
 
-    df = df[['name', 'status', 'provider id']].dropna(subset=['provider id'])
-    df['provider id'] = df['provider id'].astype(str).str.strip()
+    df = df[['Name', 'Status', 'Provider ID']].dropna(subset=['Provider ID'])
+    df['Provider ID'] = df['Provider ID'].astype(str).str.strip()
     df['uploaded_at'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    df['store_id'] = df['provider id']
+    df['store_id'] = df['Provider ID']
 
     supabase.table("store_master").delete().neq("provider_id", "").execute()
 
     insert_df = df.replace([np.inf, -np.inf], np.nan)
     insert_df = insert_df.where(pd.notnull(insert_df), None)
-    insert_df = insert_df.rename(columns={'provider id': 'provider_id'})
+    insert_df = insert_df.rename(columns={'Provider ID': 'provider_id', 'Name': 'name', 'Status': 'status'})
     records = insert_df.to_dict(orient='records')
     for i in range(0, len(records), 1000):
         supabase.table("store_master").insert(records[i:i+1000]).execute()

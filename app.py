@@ -206,13 +206,27 @@ yesterday, today = latest_dates
 yesterday_str = pd.to_datetime(yesterday).strftime("%d-%B")
 today_str = pd.to_datetime(today).strftime("%d-%B")
 
+# Update data type selection radio and logic for Tab 1
+
 data_type = st.sidebar.radio(
     "Select data type for dashboard views:",
-    ["Unique Data", "Raw Data"],
+    ["Store Unique Data", "Unique Data Based on Event ID", "Raw Data"],
     index=0
 )
 
-df_to_use = df_latest if data_type == "Unique Data" else df
+if data_type == "Store Unique Data":
+    # Unique by (Date, Buyer App, Provider ID)
+    if not all(col in df.columns for col in ["Date", "Buyer App", "Provider ID"]):
+        st.error("Missing required columns for Store Unique Data view.")
+        st.stop()
+    df_to_use = df.drop_duplicates(subset=["Date", "Buyer App", "Provider ID"], keep="last")
+elif data_type == "Unique Data Based on Event ID":
+    # Unique by (Last Search Event, Outlet Name)
+    df_to_use = df.sort_values('Created At').drop_duplicates(
+        subset=['Last Search Event', 'Outlet Name'], keep='last'
+    )
+else:
+    df_to_use = df
 
 # ---------------------------------------------
 # Helper: Prepare Comparison Data
@@ -417,4 +431,3 @@ with tab3:
             file_name=f"active_not_sent_to_ondc_{selected_buyer_tab3_str}_{selected_date_tab3}.csv",
             mime="text/csv"
         )
-

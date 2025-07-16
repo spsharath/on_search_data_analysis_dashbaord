@@ -250,19 +250,37 @@ with tab1:
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
     st.plotly_chart(fig1, use_container_width=True)
 
-    # Show Store Unique Data as a table with Excel download if selected
+    # Show Store Unique Data as a pivot table and CSV download if selected
     if data_type == "Store Unique Data":
-        st.subheader("Store Unique Data Table (Live Pivot)")
-        st.dataframe(df_to_use)
-        # Excel download
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_to_use.to_excel(writer, index=False, sheet_name='StoreUniqueData')
+        st.subheader("Store Unique Data Pivot Table (Buyer App x Date, Last 7 Days)")
+        # Filter to last 7 days
+        df_to_use['Date'] = pd.to_datetime(df_to_use['Date'], errors='coerce')
+        last_7_days = sorted(df_to_use['Date'].dropna().unique())[-7:]
+        df_last7 = df_to_use[df_to_use['Date'].isin(last_7_days)].copy()
+        df_last7['DateStr'] = df_last7['Date'].dt.strftime('%d %B')
+        pivot = pd.pivot_table(
+            df_last7,
+            index='Buyer App',
+            columns='DateStr',
+            values='Provider ID',
+            aggfunc=lambda x: x.nunique(),
+            fill_value=0
+        )
+        pivot = pivot.reset_index()
+        st.dataframe(pivot)
         st.download_button(
-            "📥 Download Store Unique Data as Excel",
-            data=output.getvalue(),
-            file_name="store_unique_data.xlsx",
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            "📥 Download Store Unique Pivot as CSV",
+            data=pivot.to_csv(index=False),
+            file_name="store_unique_pivot.csv",
+            mime='text/csv'
+        )
+        st.subheader("Store Unique Data Table (Raw, Last 7 Days)")
+        st.dataframe(df_last7)
+        st.download_button(
+            "📥 Download Store Unique Data as CSV",
+            data=df_last7.to_csv(index=False),
+            file_name="store_unique_data.csv",
+            mime='text/csv'
         )
 
 

@@ -290,13 +290,13 @@ with tab1:
     # Load store master data (from DB)
     store_master_df = load_store_master()
     active_statuses = ["mapped", "on_ondc", "temp_closed"]
-    active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)]
+    active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)].copy()
     active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip()
     active_pids = set(active_stores['provider_id'])
 
     # Prepare filters
-    available_dates = sorted(df_to_use['Date'].dropna().unique())
-    available_buyer_apps = sorted(df_to_use['Buyer App'].dropna().astype(str).str.strip().unique())
+    available_dates = sorted(df['Date'].dropna().unique())
+    available_buyer_apps = sorted(df['Buyer App'].dropna().astype(str).str.strip().unique())
 
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -337,12 +337,13 @@ with tab1:
     missing_rows = []
     for date in selected_dates:
         for buyer_app in selected_buyer_apps:
-            # Filter store data for this date and buyer app
-            filtered = df_to_use[
-                (df_to_use['Date'] == date) &
-                (df_to_use['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
-            ]
-            sent_pids = set(filtered['Provider ID'].dropna().astype(str).str.strip())
+            # Filter store data for this date and buyer app (always use raw df, not df_to_use)
+            filtered = df[
+                (df['Date'] == date) &
+                (df['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
+            ].copy()
+            filtered['Provider ID'] = filtered['Provider ID'].astype(str).str.strip()
+            sent_pids = set(filtered['Provider ID'].dropna())
             missing_pids = active_pids - sent_pids
             missing_count = len(missing_pids)
             missing_counts.append({
@@ -359,6 +360,9 @@ with tab1:
                     'Store Name': store_row['name'],
                     'Status': store_row['status']
                 })
+            # Debug output for each buyer app/date
+            st.write(f"[DEBUG] Date: {date}, Buyer App: {buyer_app}")
+            st.write(f"Active provider_ids: {len(active_pids)} | Sent provider_ids: {len(sent_pids)} | Missing: {missing_count}")
 
     # Bar graph (descending order by missing count)
     if missing_counts:
@@ -531,3 +535,4 @@ with tab3:
             file_name=f"active_not_sent_to_ondc_{selected_buyer_tab3_str}_{selected_date_tab3}.csv",
             mime="text/csv"
         )
+

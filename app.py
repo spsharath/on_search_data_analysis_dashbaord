@@ -255,11 +255,13 @@ with tab1:
     store_master_df = load_store_master()
     active_statuses = ["mapped", "on_ondc", "temp_closed"]
     active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)].copy()
-    active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip()
-    active_stores = active_stores[active_stores['provider_id'].notna() & (active_stores['provider_id'] != 'nan')]
+    active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip().str.lower()
+    active_stores = active_stores[active_stores['provider_id'].notna() & (active_stores['provider_id'] != 'nan') & (active_stores['provider_id'] != '')]
 
     # All provider_ids present in search_data (anywhere)
-    search_provider_ids = set(df['Provider ID'].astype(str).str.strip().dropna())
+    search_provider_ids = set(
+        df['Provider ID'].astype(str).str.strip().str.lower().replace('nan', '').replace('', pd.NA).dropna()
+    )
 
     # Find missing active provider_ids
     missing_active_pids = set(active_stores['provider_id']) - search_provider_ids

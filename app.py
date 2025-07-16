@@ -21,17 +21,10 @@ ACTIVE_STATUSES = ["mapped", "on_ondc", "temp_closed"]
 def load_data(file):
     df = pd.read_excel(file)
 
-    # Parse datetime
-    df['Created At'] = pd.to_datetime(
-        df['Created At'], format="%d %b %Y %I:%M:%S %p", errors='coerce'
-    )
-
-    # Safer Provider ID extraction
+    df['Created At'] = pd.to_datetime(df['Created At'], format="%d %b %Y %I:%M:%S %p", errors='coerce')
     df['Provider ID'] = df['Outlet Name'].str.extract(r"(\d{4,5}:\d{4,5})")[0]
     df['Provider ID'] = df['Provider ID'].astype(str).str.strip()
-    df = df[df['Provider ID'].notna() & (df['Provider ID'] != 'nan')]
-    
-    # Create a Date column for easier filtering
+    df['Outlet Name Clean'] = df['Outlet Name'].str.replace(r"^\d{4,5}:\d{4,5}\s*", "", regex=True)
     df['Date'] = df['Created At'].dt.date
 
     upload_to_supabase(df)
@@ -41,37 +34,27 @@ def load_data(file):
 # Upload to Supabase with Deduplication & 7-day Cleanup
 # ---------------------------------------------
 def upload_to_supabase(df):
-    # Delete records older than 7 days
     seven_days_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%S')
     supabase.table("search_data").delete().lt("created_at", seven_days_ago).execute()
 
-    # Prepare data for insertion
     insert_df = df[[
         'Last Search Event', 'Outlet Name', 'Created At', 'City Code', 'Buyer App',
         'Account Name', 'Message', 'Status', 'Provider ID', 'Outlet Name Clean', 'Date'
     ]].dropna(subset=['Created At'])
 
-    # Rename columns to match Supabase schema
     insert_df.columns = [
         'last_search_event', 'outlet_name', 'created_at', 'city_code', 'buyer_app',
         'account_name', 'message', 'status', 'provider_id', 'outlet_name_clean', 'date'
     ]
 
-    # Remove duplicates on the unique constraint columns
     insert_df = insert_df.drop_duplicates(subset=['last_search_event', 'outlet_name'], keep='last')
-
-    # Format dates as strings for Supabase
     insert_df['created_at'] = pd.to_datetime(insert_df['created_at'])
     insert_df['created_at'] = insert_df['created_at'].dt.strftime('%Y-%m-%dT%H:%M:%S')
     insert_df['date'] = insert_df['date'].astype(str)
-
-    # Replace infinite and NaNs
     insert_df = insert_df.replace([np.inf, -np.inf], np.nan)
     insert_df = insert_df.where(pd.notnull(insert_df), None)
-
     records = insert_df.to_dict(orient='records')
 
-    # Upsert in batches to avoid duplicates
     batch_size = 1000
     for i in range(0, len(records), batch_size):
         batch = records[i:i+batch_size]
@@ -91,18 +74,15 @@ def upload_store_master(file):
         st.stop()
 
     df = df[['name', 'status', 'provider id']].dropna(subset=['provider id'])
-
+    df['provider id'] = df['provider id'].astype(str).str.strip()
     df['uploaded_at'] = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    df['store_id'] = df['provider id'].astype(str)
+    df['store_id'] = df['provider id']
 
-    # Delete existing data before upload
     supabase.table("store_master").delete().neq("provider_id", "").execute()
 
     insert_df = df.replace([np.inf, -np.inf], np.nan)
     insert_df = insert_df.where(pd.notnull(insert_df), None)
-
     insert_df = insert_df.rename(columns={'provider id': 'provider_id'})
-
     records = insert_df.to_dict(orient='records')
     for i in range(0, len(records), 1000):
         supabase.table("store_master").insert(records[i:i+1000]).execute()
@@ -122,6 +102,7 @@ def load_store_master():
     df.columns = [col.lower() for col in df.columns]
     if 'uploaded_at' in df.columns:
         df['uploaded_at'] = pd.to_datetime(df['uploaded_at'], errors='coerce')
+    df['provider_id'] = df['provider_id'].astype(str).str.strip()
     return df
 
 # ---------------------------------------------
@@ -294,6 +275,7 @@ with tab1:
     active_statuses = ["mapped", "on_ondc", "temp_closed"]
     active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)].copy()
     active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip()
+    active_stores = active_stores[active_stores['provider_id'].notna() & (active_stores['provider_id'] != 'nan')]
     active_pids = set(active_stores['provider_id'])
 
     # Prepare filters
@@ -339,14 +321,17 @@ with tab1:
     missing_rows = []
     for date in selected_dates:
         for buyer_app in selected_buyer_apps:
-            # Filter store data for this date and buyer app (always use raw df, not df_to_use)
-            filtered = df[
-                (df['Date'] == date) &
-                (df['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
-            ].copy()
-            filtered['Provider ID'] = filtered['Provider ID'].astype(str).str.strip()
-            sent_pids = set(filtered['Provider ID'].dropna().astype(str).str.strip())
-            sent_pids = set(pid for pid in sent_pids if pid and pid != 'nan')
+            # If Provider ID column is missing in search data, treat all as missing
+            if 'Provider ID' not in df.columns:
+                sent_pids = set()
+            else:
+                filtered = df[
+                    (df['Date'] == date) &
+                    (df['Buyer App'].astype(str).str.strip() == str(buyer_app).strip())
+                ].copy()
+                filtered['Provider ID'] = filtered['Provider ID'].astype(str).str.strip()
+                filtered = filtered[filtered['Provider ID'].notna() & (filtered['Provider ID'] != 'nan')]
+                sent_pids = set(filtered['Provider ID'])
             missing_pids = active_pids - sent_pids
             missing_count = len(missing_pids)
             missing_counts.append({
@@ -363,9 +348,6 @@ with tab1:
                     'Store Name': store_row['name'],
                     'Status': store_row['status']
                 })
-            # Debug output for each buyer app/date
-            st.write(f"[DEBUG] Date: {date}, Buyer App: {buyer_app}")
-            st.write(f"Active provider_ids: {len(active_pids)} | Sent provider_ids: {len(sent_pids)} | Missing: {missing_count}")
 
     # Bar graph (descending order by missing count)
     if missing_counts:

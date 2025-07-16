@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime, timedelta
 import re
 import io
+import plotly.figure_factory as ff
 
 # ---------------------------------------------
 # 🔐 Supabase Config
@@ -250,7 +251,7 @@ with tab1:
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
     st.plotly_chart(fig1, use_container_width=True)
 
-    # Show Store Unique Data as a pivot table and CSV download if selected
+    # Show Store Unique Data as a pivot table and JPEG download if selected
     if data_type == "Store Unique Data":
         st.subheader("Store Unique Data Pivot Table (Buyer App x Date, Last 7 Days)")
         # Filter to last 7 days
@@ -268,12 +269,22 @@ with tab1:
         )
         pivot = pivot.reset_index()
         st.dataframe(pivot)
-        st.download_button(
-            "📥 Download Store Unique Pivot as CSV",
-            data=pivot.to_csv(index=False),
-            file_name="store_unique_pivot.csv",
-            mime='text/csv'
-        )
+
+        # Plotly Table for image export
+        fig_table = ff.create_table(pivot)
+        try:
+            import kaleido
+            import plotly.io as pio
+            img_bytes = pio.to_image(fig_table, format='jpeg', width=1200, height=400, scale=2)
+            st.download_button(
+                "📸 Download Pivot Table as JPEG",
+                data=img_bytes,
+                file_name="store_unique_pivot.jpeg",
+                mime="image/jpeg"
+            )
+        except Exception as e:
+            st.warning("Image export requires the 'kaleido' package. Please add 'kaleido' to your requirements.txt if you want JPEG export.")
+
         st.subheader("Store Unique Data Table (Raw, Last 7 Days)")
         st.dataframe(df_last7)
         st.download_button(

@@ -248,63 +248,7 @@ with tab1:
     buyer_counts = prepare_comparison(df_to_use, 'Buyer App')
     fig1 = px.bar(buyer_counts, x='Buyer App', y='Count', color='Date', barmode='group')
     st.plotly_chart(fig1, use_container_width=True)
-
-    # --- New Enhancement: Active Store Coverage vs Search Data ---
-    st.subheader("Active Stores in Store Master Missing from Search Data")
-
-    # Load store master data
-    store_master_df = load_store_master()
-    active_statuses = ["mapped", "on_ondc", "temp_closed"]
-    active_stores = store_master_df[store_master_df['status'].str.lower().isin(active_statuses)].copy()
-    active_stores['provider_id'] = active_stores['provider_id'].astype(str).str.strip().str.lower()
-    active_stores = active_stores[active_stores['provider_id'].notna() & (active_stores['provider_id'] != 'nan') & (active_stores['provider_id'] != '')]
-
-    # All provider_ids present in search_data (anywhere)
-    search_provider_ids = set(
-        df['Provider ID'].astype(str).str.strip().str.lower().replace('nan', '').replace('', pd.NA).dropna()
-    )
-
-    def normalize_pid(pid):
-        if pd.isna(pid):
-            return ''
-        # Remove all whitespace and non-visible characters, keep only digits and colon
-        return re.sub(r'[^0-9:]', '', str(pid)).lower().strip()
-
-    # Normalize both sets
-    active_stores['provider_id_norm'] = active_stores['provider_id'].apply(normalize_pid)
-    search_provider_ids_norm = set(df['Provider ID'].apply(normalize_pid))
-
-    # Show all unique values for manual inspection
-    st.write("All active provider IDs (normalized):", sorted(active_stores['provider_id_norm'].unique()))
-    st.write("All search data provider IDs (normalized):", sorted(search_provider_ids_norm))
-
-    # Show the exact missing provider IDs
-    missing_active_pids = set(active_stores['provider_id_norm']) - search_provider_ids_norm
-    st.write("Missing active provider IDs (normalized):", sorted(missing_active_pids))
-
-    # Show the corresponding rows from store_master
-    missing_active_df = active_stores[active_stores['provider_id_norm'].isin(missing_active_pids)]
-    st.dataframe(missing_active_df[['name', 'provider_id', 'status']])
-
-    # Bar graph: Count of missing active stores (all missing, single bar)
-    st.plotly_chart(
-        px.bar(
-            x=["All Buyer Apps"],
-            y=[len(missing_active_df)],
-            labels={'x': 'Buyer App', 'y': 'Missing Active Stores'},
-            title="Count of Active Stores in Store Master Missing from Search Data"
-        ),
-        use_container_width=True
-    )
-
-    # Table: List of missing provider_ids, names, statuses
-    st.dataframe(missing_active_df[['name', 'provider_id', 'status']])
-    st.download_button(
-        "📥 Download Missing Active Stores List",
-        data=missing_active_df[['name', 'provider_id', 'status']].to_csv(index=False),
-        file_name="missing_active_stores_vs_search_data.csv",
-        mime='text/csv'
-    )
+    # Removed Active Stores in Store Master Missing from Search Data section
 
 
 with tab2:

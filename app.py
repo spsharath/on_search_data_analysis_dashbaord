@@ -379,7 +379,7 @@ with tab5:
     st.subheader("Store Coverage: Active Stores NOT Sent to Buyer Apps")
 
     # Upload or Load Store Master
-    store_file = st.file_uploader("📤 Upload Store Master File", type=["xlsx"], key="store_master_upload")
+    store_file = st.file_uploader("\U0001F4E4 Upload Store Master File", type=["xlsx"], key="store_master_upload")
     if store_file:
         uploaded_at = upload_store_master(store_file)
         st.success(f"✅ Store master uploaded at {uploaded_at}")
@@ -400,28 +400,34 @@ with tab5:
 
         # Allow user to pick a date (used for both graph and table)
         available_dates_tab5 = sorted(df_latest['Date'].dropna().unique())
-        selected_date_tab5 = st.selectbox("📅 Select Date for Coverage Analysis:", available_dates_tab5, key="tab5_date")
+        selected_date_tab5 = st.selectbox("\U0001F4C5 Select Date for Coverage Analysis:", available_dates_tab5, key="tab5_date")
 
         df_selected_date = df_latest[df_latest['Date'] == selected_date_tab5]
 
-        # Buyer App Coverage Graph (for selected date only)
-        buyer_apps_all = sorted(df_selected_date['Buyer App'].dropna().unique())
+        # Build Buyer App list from both store master and search data
+        buyer_apps_from_data = set(df_selected_date['Buyer App'].dropna().astype(str).str.strip().unique())
+        buyer_apps_from_master = set(df_latest['Buyer App'].dropna().astype(str).str.strip().unique())
+        buyer_apps_all = sorted(buyer_apps_from_data.union(buyer_apps_from_master))
         coverage_data = []
 
         for buyer_app in buyer_apps_all:
-            buyer_df = df_selected_date[df_selected_date['Buyer App'] == buyer_app]
-            sent_pids_buyer = set(buyer_df['Provider ID'].dropna().astype(str).str.strip())
+            # Always use stripped string for comparison
+            buyer_app_str = str(buyer_app).strip()
+            buyer_df = df_selected_date[df_selected_date['Buyer App'].astype(str).str.strip() == buyer_app_str]
+            if not buyer_df.empty:
+                sent_pids_buyer = set(buyer_df['Provider ID'].dropna().astype(str).str.strip())
+            else:
+                sent_pids_buyer = set()
             not_sent_count = len(active_pids - sent_pids_buyer)
-            if not_sent_count > 0:
-                coverage_data.append({
-                    "Buyer App": buyer_app,
-                    "Active but not Sent": not_sent_count
-                })
+            coverage_data.append({
+                "Buyer App": buyer_app_str,
+                "Active but not Sent": not_sent_count
+            })
 
-        if coverage_data:
-            coverage_df = pd.DataFrame(coverage_data)
-            coverage_df = coverage_df.sort_values(by='Active but not Sent', ascending=False)
+        coverage_df = pd.DataFrame(coverage_data)
+        coverage_df = coverage_df.sort_values(by='Active but not Sent', ascending=False)
 
+        if coverage_df['Active but not Sent'].sum() > 0:
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 x=coverage_df['Buyer App'],
@@ -444,21 +450,19 @@ with tab5:
         # Filtered Table
         st.subheader("Not Sent Stores Table (Filtered)")
         selected_buyer_tab5 = st.selectbox("Select Buyer App:", buyer_apps_all, key="tab5_buyer")
-
+        selected_buyer_tab5_str = str(selected_buyer_tab5).strip()
         filtered_df = df_selected_date[
-            df_selected_date['Buyer App'] == selected_buyer_tab5
+            df_selected_date['Buyer App'].astype(str).str.strip() == selected_buyer_tab5_str
         ]
-
         sent_pids_filtered = set(filtered_df['Provider ID'].dropna().astype(str).str.strip())
         missing_pids = active_pids - sent_pids_filtered
-        not_sent_df = active_stores[active_stores['provider_id'].isin(missing_pids)]
+        not_sent_df = active_stores[active_stores['provider_id'].astype(str).str.strip().isin(missing_pids)]
 
-        st.warning(f"⚠️ {len(not_sent_df)} active stores not sent to ONDC for {selected_buyer_tab5} on {selected_date_tab5}")
+        st.warning(f"⚠️ {len(not_sent_df)} active stores not sent to ONDC for {selected_buyer_tab5_str} on {selected_date_tab5}")
         st.dataframe(not_sent_df[['name', 'provider_id', 'status']])
         st.download_button(
-            "📥 Download Missing Active Stores",
+            "\U0001F4C5 Download Missing Active Stores",
             data=not_sent_df.to_csv(index=False),
-            file_name=f"active_not_sent_to_ondc_{selected_buyer_tab5}_{selected_date_tab5}.csv",
+            file_name=f"active_not_sent_to_ondc_{selected_buyer_tab5_str}_{selected_date_tab5}.csv",
             mime="text/csv"
         )
-
